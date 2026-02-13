@@ -1,0 +1,28 @@
+version: "3.8"
+
+services:
+  cobalt:
+    image: ghcr.io/imputnet/cobalt:10
+    container_name: cobalt-api
+    init: true
+    restart: unless-stopped
+    ports:
+      - "9000:9000"
+    environment:
+      # REQUIRED: Your instance's URL
+      API_URL: "http://localhost:9000/"
+      
+      # Optional: API name
+      API_NAME: "FastVideoSave"
+      
+      # CORS wildcard (allow all origins)
+      CORS_WILDCARD: "1"
+      
+      # Cookie path for Instagram authentication
+      COOKIE_PATH: "/app/cookies.json"
+
+      # Proxy for residential IPs (Placeholder)
+      API_EXTERNAL_PROXY: ""
+      
+    volumes:
+      - ./cookies.json:/app/cookies.json

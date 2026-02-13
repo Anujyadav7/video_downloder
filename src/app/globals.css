@@ -1,0 +1,116 @@
+@import "tailwindcss";
+
+:root {
+  /* Brand Colors - Instagram Style */
+  --primary: #E1306C;
+  --primary-hover: #C13584;
+  --primary-gradient: linear-gradient(45deg, #f09433 0%, #e6683c 25%, #dc2743 50%, #cc2366 75%, #bc1888 100%);
+  --primary-foreground: #ffffff;
+
+  /* Backgrounds */
+  --background: #ffffff;
+  --background-alt: #f9fafb;
+  --surface: #ffffff;
+
+  /* Text - High Contrast (Softened) */
+  --foreground: #1e293b; /* Slate 800 - Softer than 900 */
+  --foreground-muted: #475569; /* Slate 600 - Slightly lighter */
+
+  /* Features */
+  --border: #e2e8f0;
+  --ring: #E1306C;
+  --radius: 0.75rem; /* 12px */
+
+  /* Spacing Scale */
+  --spacing-container: 90%;
+  --spacing-section: 4rem;
+
+  /* Font Families */
+  --font-sans: "Inter", system-ui, sans-serif;
+  
+  /* Headings */
+  --heading-color: #1e293b; /* Slate 800 */
+}
+
+@theme inline {
+  --color-background: var(--background);
+  --color-background-alt: var(--background-alt);
+  --color-surface: var(--surface);
+  --color-foreground: var(--foreground);
+  --color-heading: var(--heading-color);
+  --color-primary: var(--primary);
+  --color-primary-hover: var(--primary-hover);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-muted: var(--foreground-muted);
+  --color-border: var(--border);
+  --color-ring: var(--ring);
+  --radius-lg: var(--radius);
+  --font-sans: var(--font-sans);
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    /* Optional Dark Mode - keeping it light/minimalist as requested, but good to have base */
+    --background: #0f172a;
+    --background-alt: #1e293b;
+    --surface: #1e293b;
+    --foreground: #e2e8f0;
+    --foreground-muted: #94a3b8;
+    --border: #334155;
+    --heading-color: #ffffff;
+  }
+}
+
+body {
+  background-color: var(--background);
+  color: var(--foreground);
+  font-family: var(--font-sans);
+  line-height: 1.6;
+  -webkit-font-smoothing: antialiased;
+}
+
+/* Layout Utilities */
+.container-custom {
+  width: var(--spacing-container);
+  max-width: 80rem; /* 1280px */
+  margin-left: auto;
+  margin-right: auto;
+}
+
+/* Typography Utilities */
+h1,
+h2,
+h3,
+h4,
+h5,
+h6 {
+  font-weight: 700;
+  line-height: 1.2;
+  letter-spacing: -0.02em;
+  color: var(--heading-color);
+}
+
+h1 {
+  font-size: 2.5rem;
+}
+h2 {
+  font-size: 2rem;
+}
+h3 {
+  font-size: 1.75rem;
+}
+
+@media (max-width: 768px) {
+  h1 {
+    font-size: 2rem;
+  }
+  h2 {
+    font-size: 1.75rem;
+  }
+}
+
+/* Utility Classes for Spacing */
+.section-padding {
+  padding-top: var(--spacing-section);
+  padding-bottom: var(--spacing-section);
+}
