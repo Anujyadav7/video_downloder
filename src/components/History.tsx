@@ -19,10 +19,18 @@ export default function History() {
   const [history, setHistory] = useState<HistoryItem[]>([]);
 
   useEffect(() => {
-    const stored = localStorage.getItem("download_history");
-    if (stored) {
-      setHistory(JSON.parse(stored));
-    }
+    // Defer reading localStorage to avoid hydration mismatch/synchronous render issues
+    const timer = setTimeout(() => {
+        const stored = localStorage.getItem("download_history");
+        if (stored) {
+            try {
+                setHistory(JSON.parse(stored));
+            } catch (e) {
+                console.error("Failed to parse history", e);
+            }
+        }    
+    }, 0);
+    return () => clearTimeout(timer);
   }, []);
 
   const clearHistory = () => {
