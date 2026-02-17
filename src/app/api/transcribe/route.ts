@@ -6,11 +6,14 @@ export const maxDuration = 30; // 30s max duration
 // --- Configuration ---
 const GROQ_API_URL = "https://api.groq.com/openai/v1/audio/transcriptions";
 const COBALT_INSTANCES = [
-  // process.env.NODE_ENV === 'development' ? "http://127.0.0.1:9000" : null, // Disabled local to prefer reliable public extraction
-  "https://api.cobalt.tools", // POST / works
-  "https://co.wuk.sh/api/json", // POST /api/json works
-  "https://cobalt.kwiatekmiki.com",
-  "https://cobalt.tools/api/json"
+  process.env.COBALT_API_URL,
+  "https://api.cobalt.tools", // Official API (POST /)
+  "https://co.wuk.sh/api/json", // Wuk.sh API
+  "https://cobalt.gamestree.org/api/json", // Gamestree API
+  "https://api.cobalt.tools/api/json", // Official API Alternate
+  "https://cobalt.kwiatekmiki.com/api/json", // Kwiatekmiki API
+  "https://dl.khub.ky/api/json", // Another public instance
+  "https://cobalt.tools/api/json" // Frontend fallback
 ].filter(Boolean) as string[];
 
 // --- Helper Functions ---
