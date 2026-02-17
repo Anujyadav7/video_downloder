@@ -111,6 +111,14 @@ export default function InputBox({ onDownload, type = "video" }: InputBoxProps) 
     } catch (e) { console.error(e); }
   };
 
+  // Client-Side Fallback Instances
+  const FALLBACK_INSTANCES = [
+    "https://api.cobalt.tools", 
+    "https://co.wuk.sh/api/json",
+    "https://cobalt.kwiatekmiki.com/api/json", 
+    "https://cobalt.tools/api/json"
+  ];
+
   const handleDownload = async (e: React.FormEvent, reqMode: "auto" | "audio" = "auto") => {
     e.preventDefault();
     setError("");
@@ -135,33 +143,17 @@ export default function InputBox({ onDownload, type = "video" }: InputBoxProps) 
     setShowScript(false);
     setTimeout(() => setLoadingProgress(25), 300);
 
-    try {
-      const response = await fetch("/api/download", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ url, mode: type === 'audio' ? 'audio' : 'auto' }),
-      });
-      setLoadingProgress(50);
-      
-      const data: CobaltResponse = await response.json();
-      if (!response.ok || data.error) throw new Error(data.error || "Download failed. Please check the link.");
-
+    const processData = async (data: CobaltResponse) => {
       setLoadingProgress(85);
-
       const downloadUrl = data.url || (data.picker?.[0]?.url);
       
-      // Intelligent Source Selection (Fixes Double Proxy Error)
       const isInternal = downloadUrl?.startsWith("/");
       const initialSrc = downloadUrl ? (isInternal ? downloadUrl : `/api/proxy?url=${encodeURIComponent(downloadUrl)}`) : "";
       
       setVideoSrc(initialSrc);
-      console.log("Setting initial video src:", initialSrc);
 
-      // Detect actual content type from the media URL, not just filename
       const filename = data.filename || 'Content';
       const mediaUrl = data.url || (data.picker?.[0]?.url) || '';
-      
-      // Check the actual media URL for type
       const isVideo = mediaUrl.includes('.mp4') || mediaUrl.includes('.m3u8') || 
                      mediaUrl.includes('video') || type === 'video' || type === 'reels';
       const isPhoto = !isVideo && (mediaUrl.includes('.jpg') || mediaUrl.includes('.jpeg') || 
@@ -178,22 +170,73 @@ export default function InputBox({ onDownload, type = "video" }: InputBoxProps) 
           title: filename,
           type: contentType,
           url: url,
-          downloadUrl: initialSrc, // Proxied URL for frontend
-          rawMediaUrl: downloadUrl, // Original raw URL from API
+          downloadUrl: initialSrc,
+          rawMediaUrl: downloadUrl,
           isAudio: type === 'audio',
           picker: data.picker 
       };
 
       setResult(newResult);
-      addToHistory(newResult); // Save to history
+      addToHistory(newResult);
       setLoadingProgress(100);
 
       if (type === "script") {
           startTranscription(downloadUrl || "");
       }
+    };
 
-    } catch (err: any) {
-      setError(err.message || "Failed.");
+    try {
+      // 1. Try Server-Side API First
+      console.log("Attempting Server-Side Download...");
+      const response = await fetch("/api/download", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ url, mode: type === 'audio' ? 'audio' : 'auto' }),
+      });
+      
+      const data: CobaltResponse = await response.json();
+      
+      if (response.ok && !data.error) {
+           await processData(data);
+           return; // Success!
+      }
+      
+      throw new Error(data.error || "Server download failed");
+
+    } catch (serverErr: any) {
+      console.warn("Server-Side Download failed, switching to Client-Side Fallback:", serverErr.message);
+      
+      // 2. Try Client-Side Fallback (Direct Browser Fetch)
+      let success = false;
+      for (const instance of FALLBACK_INSTANCES) {
+        try {
+            console.log(`Trying Client-Side: ${instance}`);
+            const res = await fetch(instance, {
+                method: "POST",
+                headers: { 
+                    "Accept": "application/json",
+                    "Content-Type": "application/json"
+                },
+                body: JSON.stringify({
+                    url: url,
+                    filenameStyle: "basic",
+                    // Use minimal body to reduce CORS/preflight issues
+                })
+            });
+            const data = await res.json();
+            if (data.status === "error" || data.status === "rate-limit") throw new Error(data.text);
+            
+            await processData(data); // Reuse processing logic
+            success = true;
+            break; // Stop after success
+        } catch (e) {
+            console.log(`Client-Side Instance ${instance} failed`, e);
+        }
+      }
+
+      if (!success) {
+          setError(serverErr.message || "Download failed. Please try again.");
+      }
     } finally {
       setLoading(false);
       setLoadingProgress(0);
