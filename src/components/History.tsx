@@ -11,6 +11,7 @@ interface HistoryItem {
   thumbnail?: string | null;
   title?: string;
   downloadUrl?: string;
+  rawMediaUrl?: string; // Needed for correct proxying on restore
   picker?: Array<{ url: string; type: string }>;
   isAudio?: boolean;
 }
@@ -18,24 +19,29 @@ interface HistoryItem {
 export default function History() {
   const [history, setHistory] = useState<HistoryItem[]>([]);
 
-  useEffect(() => {
-    const loadHistory = () => {
-        const stored = localStorage.getItem("download_history");
-        if (stored) {
-            try {
-                setHistory(JSON.parse(stored));
-            } catch (e) {
-                console.error("Failed to parse history", e);
-            }
-        }    
-    };
-    
-    // Initial Load
-    setTimeout(loadHistory, 0);
+  const loadHistory = () => {
+      const stored = localStorage.getItem("download_history");
+      if (stored) {
+          try {
+              setHistory(JSON.parse(stored));
+          } catch (e) {
+              console.error("Failed to parse history", e);
+          }
+      }
+  };
 
-    // Listen for updates
-    window.addEventListener("history_updated", loadHistory);
-    return () => window.removeEventListener("history_updated", loadHistory);
+  useEffect(() => {
+    // Initial load
+    const timer = setTimeout(loadHistory, 0);
+    
+    // Listen for updates from InputBox
+    const handleHistoryUpdate = () => loadHistory();
+    window.addEventListener('history_updated', handleHistoryUpdate);
+
+    return () => {
+        clearTimeout(timer);
+        window.removeEventListener('history_updated', handleHistoryUpdate);
+    };
   }, []);
 
   const clearHistory = () => {

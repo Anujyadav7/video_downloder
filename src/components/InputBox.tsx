@@ -125,6 +125,33 @@ export default function InputBox({ onDownload, type = "video" }: InputBoxProps) 
     return () => window.removeEventListener('restore_download', handleRestore);
   }, []);
 
+  const addToHistory = (item: DownloadResult) => {
+    try {
+        const stored = localStorage.getItem("download_history");
+        const historyList = stored ? JSON.parse(stored) : [];
+        
+        // Check for duplicates
+        if (!historyList.some((h: any) => h.url === item.url)) {
+            const newItem = {
+                url: item.url,
+                title: item.title,
+                thumbnail: item.thumbnail,
+                type: item.type,
+                timestamp: Date.now(),
+                downloadUrl: item.downloadUrl,
+                rawMediaUrl: item.rawMediaUrl, // Crucial for restore
+                picker: item.picker ? item.picker.map((p: any) => ({ url: p.url, type: p.type })) : undefined,
+                isAudio: item.isAudio
+            };
+            const updated = [newItem, ...historyList].slice(0, 50);
+            localStorage.setItem("download_history", JSON.stringify(updated));
+            window.dispatchEvent(new Event('history_updated'));
+        }
+    } catch (e) {
+        console.error("Failed to add to history", e);
+    }
+  };
+
   const handleDownload = async (e: React.FormEvent, reqMode: "auto" | "audio" = "auto") => {
     e.preventDefault();
     setError("");
@@ -191,19 +218,8 @@ export default function InputBox({ onDownload, type = "video" }: InputBoxProps) 
       };
 
       setResult(newResult);
+      addToHistory(newResult); // Save to history
       setLoadingProgress(100);
-
-      // Save to History using localStorage
-      try {
-          const historyItem = { ...newResult, timestamp: Date.now() };
-          const existing = localStorage.getItem("download_history");
-          const history = existing ? JSON.parse(existing) : [];
-          // Add to top, remove duplicates by original URL, limit to 20
-          const newHistory = [historyItem, ...history.filter((h: any) => h.url !== url)].slice(0, 20);
-          localStorage.setItem("download_history", JSON.stringify(newHistory));
-      } catch (e) {
-          console.error("Failed to save history", e);
-      }
 
       if (type === "script") {
           startTranscription(downloadUrl || "");
