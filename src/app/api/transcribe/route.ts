@@ -40,10 +40,6 @@ export async function POST(request: NextRequest) {
         
         console.log(`[Transcribe] Extracting audio via ${endpoint}`);
         
-        // Add timeout to prevent hanging
-        const controller = new AbortController();
-        const timeoutId = setTimeout(() => controller.abort(), 8000); // 8s timeout
-        
         const response = await fetch(endpoint, {
           method: "POST",
           headers: { 
@@ -56,11 +52,8 @@ export async function POST(request: NextRequest) {
             downloadMode: "audio",
             audioFormat: "mp3", 
             filenameStyle: "basic"
-          }),
-          signal: controller.signal
+          })
         });
-
-        clearTimeout(timeoutId);
 
         const data: any = await response.json();
         
