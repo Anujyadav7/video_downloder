@@ -9,8 +9,8 @@ const COBALT_INSTANCES = [
   process.env.COBALT_API_URL, 
   "https://api.cobalt.tools", // Official API (POST /)
   "https://co.wuk.sh/api/json", // Wuk.sh API (POST /api/json required)
-  "https://cobalt.kwiatekmiki.com", // Try root, might fail if needs /api/json
-  "https://cobalt.tools/api/json" // Frontend path variant
+  "https://cobalt.kwiatekmiki.com",
+  "https://cobalt.tools/api/json"
 ].filter(Boolean) as string[];
 
 type CobaltResponse = {
