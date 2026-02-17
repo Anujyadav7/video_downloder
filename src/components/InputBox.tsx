@@ -451,24 +451,29 @@ export default function InputBox({ onDownload, type = "video" }: InputBoxProps) 
                          <p className="text-sm text-neutral-500 dark:text-neutral-400 font-medium">Download all items individually</p>
                       </div>
                       
-                      {/* Carousel Grid - Centered with curved images */}
-                      <div className="flex flex-wrap justify-center items-center gap-3 w-full">
+                      {/* Carousel Grid - Reverted to Standard Grid (Clean Look) */}
+                      <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-4 w-full">
                          {result.picker.map((item, index) => {
                             const itemUrl = item.url.startsWith("/") ? item.url : `/api/proxy?url=${encodeURIComponent(item.url)}`;
-                            const itemType = item.type || 'photo';
+                            
+                            // Stronger Type Detection: Default to PHOTO unless it's explicitly a video file
+                            // This fixes "Video Stream Error" on webp images or mixed content
+                            const isExplicitVideo = item.url.includes('.mp4') || item.url.includes('.m3u8');
+                            const itemType = isExplicitVideo ? 'video' : 'photo'; 
+                            
                             const itemFilename = `instagram_carousel_${index + 1}.${itemType === 'photo' ? 'jpg' : 'mp4'}`;
                             
                             return (
-                               <div key={index} className="group relative aspect-square bg-neutral-100 dark:bg-neutral-800 rounded-2xl overflow-hidden shadow-sm hover:shadow-lg transition-all w-[calc(50%-0.375rem)] sm:w-[calc(33.333%-0.5rem)] md:w-[calc(25%-0.5625rem)] max-w-xs">
+                               <div key={index} className="group relative aspect-square bg-neutral-100 dark:bg-neutral-800 rounded-3xl overflow-hidden shadow-sm hover:shadow-xl transition-all w-full">
                                   {/* Media - shows full photo without cropping */}
-                                  <div className="absolute inset-0 flex items-center justify-center p-1">
+                                  <div className="absolute inset-0 flex items-center justify-center p-0">
                                      {itemType === 'photo' ? (
                                         <img 
                                            src={itemUrl}
                                            alt={`Item ${index + 1}`}
-                                           className="max-w-full max-h-full w-auto h-auto object-contain rounded-xl"
+                                           className="w-full h-full object-cover" // object-cover for photos in grid looks better (fills box)
                                            onError={(e) => {
-                                              // Fallback to MediaThumbnail on error
+                                              // Fallback to MediaThumbnail on error, but try to hide if broken
                                               e.currentTarget.style.display = 'none';
                                            }}
                                         />
@@ -483,18 +488,18 @@ export default function InputBox({ onDownload, type = "video" }: InputBoxProps) 
                                   </div>
                                   
                                   {/* Hover overlay with download button */}
-                                  <div className="absolute inset-0 bg-gradient-to-t from-black/60 via-black/0 to-black/0 opacity-0 group-hover:opacity-100 transition-opacity flex items-end justify-center p-3">
+                                  <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
                                      <button 
                                         onClick={() => startDownloadFile(itemUrl, itemFilename)}
-                                        className="w-full bg-white text-neutral-900 py-2.5 rounded-xl font-semibold text-sm hover:bg-neutral-50 transition-colors shadow-lg flex items-center justify-center gap-2"
+                                        className="bg-white/90 backdrop-blur-sm text-neutral-900 px-4 py-2.5 rounded-xl font-bold text-sm flex items-center gap-2 shadow-lg hover:bg-white hover:scale-105 transition-all"
                                      >
                                         <Download className="w-4 h-4" />
-                                        Download
+                                        {itemType === 'photo' ? 'Photo' : 'Video'}
                                      </button>
                                   </div>
                                   
                                   {/* Item number badge */}
-                                  <div className="absolute top-2 right-2 bg-white/90 backdrop-blur-sm text-neutral-900 text-xs font-bold px-2.5 py-1 rounded-full shadow-sm">
+                                  <div className="absolute top-2 right-2 bg-black/50 backdrop-blur-md text-white text-xs font-bold px-2.5 py-1 rounded-full border border-white/20">
                                      {index + 1}
                                   </div>
                                </div>
@@ -524,7 +529,7 @@ export default function InputBox({ onDownload, type = "video" }: InputBoxProps) 
                       <div className="w-full md:w-56 aspect-[4/5] md:aspect-[3/4] bg-gradient-to-br from-neutral-100 to-neutral-200 dark:from-neutral-800 dark:to-neutral-900 rounded-2xl overflow-hidden shadow-lg flex-shrink-0 mx-auto md:mx-0 ring-1 ring-black/5 dark:ring-white/5">
                           <MediaThumbnail 
                               thumbnail={result.thumbnail} 
-                              videoUrl={result.downloadUrl} 
+                              videoUrl={result.downloadUrl?.startsWith("/") ? result.downloadUrl : `/api/proxy?url=${encodeURIComponent(result.downloadUrl || '')}`}
                               type={result.type} 
                               autoPlay={true} // Enable Live Preview!
                           />

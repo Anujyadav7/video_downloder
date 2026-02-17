@@ -9,29 +9,41 @@ export async function GET(request: NextRequest) {
     return new NextResponse("Missing URL parameter", { status: 400 });
   }
 
-  // Basic validation to prevent obvious abuse (e.g., only allow media domains)
+  // Basic validation
   if (!url.startsWith("http")) {
       return new NextResponse("Invalid URL", { status: 400 });
   }
 
   try {
-    const response = await fetch(url, {
-      method: "GET",
-      headers: {
-        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
-        "Referer": "https://www.instagram.com/" // Crucial for Instagram CDN
-      }
-    });
-
-    if (!response.ok) {
-      return new NextResponse(`Upstream Error: ${response.status}`, { status: response.status });
+    const headers = new Headers();
+    headers.set("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36");
+    
+    // Forward Range header for video seeking/buffering
+    const range = request.headers.get("range");
+    if (range) {
+        headers.set("Range", range);
     }
 
-    // Clone headers to strip sensitive ones if needed, or modify them
+    // Only add Referer for Instagram/Facebook domains to bypass CDN blocking
+    if (url.includes("instagram.com") || url.includes("facebook.com") || url.includes("cdninstagram")) {
+        headers.set("Referer", "https://www.instagram.com/");
+    }
+
+    const response = await fetch(url, {
+      method: "GET",
+      headers: headers
+    });
+
+    // Create response headers
     const newHeaders = new Headers(response.headers);
-    newHeaders.set("Access-Control-Allow-Origin", "*"); // Allow frontend access
+    newHeaders.set("Access-Control-Allow-Origin", "*"); 
     
-    // Cloudflare handles streams automatically
+    // Ensure critical headers for video playback are passed
+    if (response.headers.has("Content-Type")) newHeaders.set("Content-Type", response.headers.get("Content-Type")!);
+    if (response.headers.has("Content-Length")) newHeaders.set("Content-Length", response.headers.get("Content-Length")!);
+    if (response.headers.has("Content-Range")) newHeaders.set("Content-Range", response.headers.get("Content-Range")!);
+    if (response.headers.has("Accept-Ranges")) newHeaders.set("Accept-Ranges", response.headers.get("Accept-Ranges")!);
+
     return new NextResponse(response.body, {
       status: response.status,
       headers: newHeaders
