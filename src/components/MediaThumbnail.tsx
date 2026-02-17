@@ -11,9 +11,10 @@ interface MediaThumbnailProps {
   className?: string; // wrapper class
   autoPlay?: boolean;
   instagramUrl?: string; // For Embed fallback
+    onError?: () => void;
 }
 
-export default function MediaThumbnail({ thumbnail, videoUrl, type, alt, className = "", autoPlay = false, instagramUrl }: MediaThumbnailProps) {
+export default function MediaThumbnail({ thumbnail, videoUrl, type, alt, className = "", autoPlay = false, instagramUrl, onError }: MediaThumbnailProps) {
   const [imgError, setImgError] = useState(false);
   const [videoError, setVideoError] = useState(false);
   
@@ -69,8 +70,9 @@ export default function MediaThumbnail({ thumbnail, videoUrl, type, alt, classNa
                 onMouseOver={(e) => e.currentTarget.play().catch(() => {})}
                 onMouseOut={(e) => !autoPlay && e.currentTarget.pause()}
                 onError={(e) => {
-                    console.error("Video Playback Error", e);
+                    // console.error("Video Playback Error", e); // Removed noisy log
                     setVideoError(true); 
+                    if (onError) onError();
                 }}
                 className="max-w-full max-h-full w-auto h-auto object-contain transition-transform duration-700 group-hover:scale-[1.02]"
             />

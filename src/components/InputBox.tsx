@@ -529,9 +529,10 @@ export default function InputBox({ onDownload, type = "video" }: InputBoxProps) 
                       <div className="w-full md:w-56 aspect-[4/5] md:aspect-[3/4] bg-gradient-to-br from-neutral-100 to-neutral-200 dark:from-neutral-800 dark:to-neutral-900 rounded-2xl overflow-hidden shadow-lg flex-shrink-0 mx-auto md:mx-0 ring-1 ring-black/5 dark:ring-white/5">
                           <MediaThumbnail 
                               thumbnail={result.thumbnail} 
-                              videoUrl={result.downloadUrl?.startsWith("/") ? result.downloadUrl : `/api/proxy?url=${encodeURIComponent(result.downloadUrl || '')}`}
+                              videoUrl={videoSrc || (result.downloadUrl?.startsWith("/") ? result.downloadUrl : `/api/proxy?url=${encodeURIComponent(result.downloadUrl || '')}`)}
                               type={result.type} 
-                              autoPlay={true} // Enable Live Preview!
+                              autoPlay={true} 
+                              onError={handleVideoError}
                           />
                       </div>
                       
