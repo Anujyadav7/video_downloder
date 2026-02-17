@@ -107,10 +107,11 @@ export default function InputBox({ onDownload, type = "video" }: InputBoxProps) 
             setResult({ ...item });
             setUrl(item.url);
             
-            // Intelligent Source Selection
-            if (item.downloadUrl) {
-                const isInternal = item.downloadUrl.startsWith("/");
-                setVideoSrc(isInternal ? item.downloadUrl : `/api/proxy?url=${encodeURIComponent(item.downloadUrl)}`);
+            // Use rawMediaUrl (original) for proxying, not downloadUrl (already proxied)
+            const rawUrl = item.rawMediaUrl || item.downloadUrl;
+            if (rawUrl) {
+                const isInternal = rawUrl.startsWith("/");
+                setVideoSrc(isInternal ? rawUrl : `/api/proxy?url=${encodeURIComponent(rawUrl)}`);
             } else {
                 setVideoSrc("");
             }
@@ -183,7 +184,8 @@ export default function InputBox({ onDownload, type = "video" }: InputBoxProps) 
           title: filename,
           type: contentType,
           url: url,
-          downloadUrl: initialSrc, // Use the Safe/Proxied URL!
+          downloadUrl: initialSrc, // Proxied URL for frontend
+          rawMediaUrl: downloadUrl, // Original raw URL from API
           isAudio: type === 'audio',
           picker: data.picker 
       };

@@ -22,7 +22,8 @@ export interface DownloadResult {
   title: string;
   type: string;
   url: string;
-  downloadUrl?: string;
+  downloadUrl?: string; // Proxied URL for frontend use
+  rawMediaUrl?: string; // Original unproxied URL from API
   picker?: CobaltPickerItem[]; // For photo carousels
   isAudio?: boolean;
 }
