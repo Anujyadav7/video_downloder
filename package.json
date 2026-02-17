@@ -4,11 +4,12 @@
   "private": true,
   "scripts": {
     "dev": "next dev",
-    "build": "next-on-pages",
+    "build": "next build",
     "start": "next start",
     "lint": "eslint",
-    "preview": "npm run build && wrangler pages dev .vercel/output/static",
-    "deploy": "npm run build && wrangler pages deploy .vercel/output/static"
+    "preview": "npm run pages:build && wrangler pages dev .vercel/output/static",
+    "deploy": "npm run pages:build && wrangler pages deploy .vercel/output/static",
+    "pages:build": "npx @cloudflare/next-on-pages"
   },
   "dependencies": {
     "@google/generative-ai": "^0.24.1",
