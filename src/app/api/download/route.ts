@@ -9,7 +9,8 @@ const COBALT_INSTANCES = [
   process.env.NODE_ENV === 'development' ? "http://127.0.0.1:9000" : null,
   process.env.COBALT_API_URL, 
   "https://cobalt.kwiatekmiki.com/api/json",
-  "https://co.wuk.sh/api/json"
+  "https://co.wuk.sh/api/json",
+  "https://api.cobalt.tools" // Official instance as last resort
 ].filter(Boolean) as string[];
 
 type CobaltResponse = {
