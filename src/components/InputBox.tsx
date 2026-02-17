@@ -143,7 +143,7 @@ export default function InputBox({ onDownload, type = "video" }: InputBoxProps) 
                 picker: item.picker ? item.picker.map((p: any) => ({ url: p.url, type: p.type })) : undefined,
                 isAudio: item.isAudio
             };
-            const updated = [newItem, ...historyList].slice(0, 50);
+            const updated = [newItem, ...historyList].slice(0, 5); // Limit to 5 items
             localStorage.setItem("download_history", JSON.stringify(updated));
             window.dispatchEvent(new Event('history_updated'));
         }
