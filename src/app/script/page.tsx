@@ -1,3 +1,4 @@
+
 import InputBox from "@/components/InputBox";
 import History from "@/components/History";
 import Features from "@/components/Features";
@@ -6,56 +7,45 @@ import ToolNavigation from "@/components/ToolNavigation";
 import { Metadata } from "next";
 
 export const metadata: Metadata = {
-  title: "AI Script Extractor - Transcribe Instagram Reels & Videos",
-  description: "Extract text scripts from Instagram Reels and videos instantly using AI. Get Hinglish transcripts, copy to clipboard, and repurpose content.",
+  title: "AI Video Script Generator - YouTube, Reels & TikTok to Text",
+  description: "Convert video to text instantly. Extract scripts from YouTube Shorts, Instagram Reels, and TikTok videos in Romanized Hinglish. Free AI transcription tool.",
 };
 
 export default function ScriptPage() {
   const faqItems = [
     {
-      question: "How does the AI Script Extractor work?",
-      answer: "We use advanced AI to listen to the audio of the Instagram Reel or video and transcribe it into text. It works best with clear speech.",
+      question: "How does the AI Script Generator work?",
+      answer: "Paste a video link, click 'Get Script', and our AI listens to the audio to generate a word-for-word transcript in Hinglish.",
     },
     {
-      question: "Does it support Hinglish?",
-      answer: "Yes! Our AI is optimized to understand and transcribe Hinglish (Hindi + English) speech accurately.",
+      question: "Which languages are supported?",
+      answer: "Currently, we specialize in Hinglish (Hindi + English) transcription derived from speech.",
     },
-     {
+    {
       question: "Is it free?",
-      answer: "Yes, the script extraction feature is completely free to use.",
-    },
-    {
-      question: "Can I edit the script?",
-      answer: "Yes, once the script is generated, you can edit it directly in the text box before checking or copying it.",
+      answer: "Yes, the script generator is 100% free to use.",
     },
   ];
 
   return (
-    <div className="flex flex-col items-center">
-      <ToolNavigation />
-      <section className="w-full bg-background pt-8 pb-20 px-4">
-         <div className="container-custom text-center">
-          <h1 className="mb-4 text-3xl md:text-4xl font-bold text-heading">
-            AI Script Extractor
-          </h1>
-          <p className="text-lg text-muted mb-10 max-w-2xl mx-auto">
-            Turn Instagram Reels into text instantly. Perfect for content creators and marketers.
-          </p>
-          {/* Reuse InputBox but we might want to default to script mode? 
-              Currently InputBox handles download first, then script. 
-              The user flow is: Paste Link -> Download -> Extract Script.
-          */}
+    <div className="flex flex-col items-center min-h-screen bg-background text-foreground transition-colors duration-300">
+       <ToolNavigation />
+
+      <section className="w-full pt-12 pb-20 px-4 flex flex-col items-center">
+        <div className="container-custom w-full max-w-5xl">
           <InputBox type="script" />
-          <History />
+          <div className="mt-12">
+            <History />
+          </div>
         </div>
       </section>
+
       <Features />
+
       <section className="py-16 w-full bg-background-alt">
         <div className="container-custom">
            <div className="text-center mb-12">
-            <h2 className="text-3xl font-bold text-heading mb-4">
-              Script Extractor FAQ
-            </h2>
+            <h2 className="text-3xl font-bold mb-4">Script FAQ</h2>
           </div>
           <FAQ items={faqItems} />
         </div>

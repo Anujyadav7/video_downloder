@@ -1,399 +1,571 @@
+
 "use client";
 
-import { useState, useEffect } from "react";
-import { ArrowRight, Loader2, Link as LinkIcon, Download, Image as ImageIcon, Music, Captions } from "lucide-react";
+import { useState, useRef, useEffect } from "react";
+import { 
+  ArrowRight, Loader2, Link as LinkIcon, Download, Captions, AlertTriangle, 
+  Youtube, Instagram, Facebook, Twitter, Video, CheckCircle2, FileText, Image as ImageIcon, Sparkles, AlertCircle 
+} from "lucide-react";
 import ScriptEditor from "./ScriptEditor";
 import type { CobaltResponse, DownloadResult } from "@/types/cobalt";
 import { fetchInstagramThumbnail } from "@/app/actions";
 import MediaThumbnail from "./MediaThumbnail";
+import CircularProgress from "./CircularProgress";
 
 interface InputBoxProps {
   onDownload?: (url: string) => void;
   type?: "video" | "photo" | "story" | "audio" | "reels" | "script";
 }
 
-export default function InputBox({ onDownload, type = "reels" }: InputBoxProps) {
+const getModeDetails = (url: string, type: string) => {
+    let details = {
+        title: "Smart Video Downloader",
+        tag: "Universal Saver",
+        icon: LinkIcon,
+        color: "text-zinc-700 dark:text-zinc-300",
+        bg: "bg-zinc-100 dark:bg-zinc-800/50",
+        border: "border-zinc-200 dark:border-zinc-700"
+    };
+
+    if (type === 'script') {
+        details.title = "Video Link to AI Script";
+        details.tag = "AI Transcription";
+        details.icon = Sparkles;
+        details.color = "text-violet-600 dark:text-violet-400";
+        details.bg = "bg-violet-50 dark:bg-violet-900/10";
+        details.border = "border-violet-100 dark:border-violet-800/30";
+    } else if (type === 'photo') {
+        details.title = "Instagram Photo Downloader";
+        details.tag = "HD Images";
+        details.icon = ImageIcon;
+        details.color = "text-pink-600 dark:text-pink-400";
+        details.bg = "bg-pink-50 dark:bg-pink-900/10";
+        details.border = "border-pink-100 dark:border-pink-800/30";
+    }
+
+    if (url) {
+        if (url.includes("youtube.com") || url.includes("youtu.be")) {
+             details.tag = "YouTube";
+             details.icon = Youtube;
+             details.color = "text-red-600 dark:text-red-400";
+             details.bg = "bg-red-50 dark:bg-red-900/10";
+             details.border = "border-red-100 dark:border-red-800/30";
+        } else if (url.includes("instagram.com")) {
+             details.tag = "Instagram";
+             details.icon = Instagram;
+             details.color = "text-pink-600 dark:text-pink-400";
+             details.bg = "bg-pink-50 dark:bg-pink-900/10";
+             details.border = "border-pink-100 dark:border-pink-800/30";
+        } else if (url.includes("facebook.com") || url.includes("fb.watch")) {
+             details.tag = "Facebook";
+             details.icon = Facebook;
+             details.color = "text-blue-600 dark:text-blue-400";
+             details.bg = "bg-blue-50 dark:bg-blue-900/10";
+             details.border = "border-blue-100 dark:border-blue-800/30";
+        } else if (url.includes("twitter.com") || url.includes("x.com")) {
+             details.tag = "Twitter";
+             details.icon = Twitter;
+             details.color = "text-black dark:text-white"; 
+             details.bg = "bg-zinc-100 dark:bg-zinc-800";
+             details.border = "border-zinc-200 dark:border-zinc-700";
+        } else if (url.includes("tiktok.com")) {
+             details.tag = "TikTok";
+             details.icon = Video;
+             details.color = "text-pink-500 dark:text-pink-400";
+             details.bg = "bg-zinc-50 dark:bg-zinc-900";
+             details.border = "border-zinc-200 dark:border-zinc-700";
+        }
+    }
+
+    return details;
+};
+
+export default function InputBox({ onDownload, type = "video" }: InputBoxProps) {
   const [url, setUrl] = useState("");
   const [loading, setLoading] = useState(false);
-  const [loadingProgress, setLoadingProgress] = useState(0);
+  const [loadingProgress, setLoadingProgress] = useState(0); 
+  const [transcribeProgress, setTranscribeProgress] = useState(0); 
   const [error, setError] = useState("");
   const [result, setResult] = useState<DownloadResult | null>(null);
-  const [downloadMode, setDownloadMode] = useState<"auto" | "audio">("auto");
   const [script, setScript] = useState("");
   const [showScript, setShowScript] = useState(false);
-  const [extractingScript, setExtractingScript] = useState(false);
+  const [transcribing, setTranscribing] = useState(false);
+  const [transcriptionComplete, setTranscriptionComplete] = useState(false);
+  
+  // Video Source Logic (Proxy vs Direct)
+  const [videoSrc, setVideoSrc] = useState("");
 
-  // Restore result from History "Download Again" click
+  const mode = getModeDetails(url, type);
+  const ModeIcon = mode.icon;
+  const videoRef = useRef<HTMLVideoElement | null>(null);
+
   useEffect(() => {
     const handleRestore = (e: Event) => {
         const customEvent = e as CustomEvent;
         if (customEvent.detail) {
             const item = customEvent.detail;
-            setResult({
-                title: item.title,
-                thumbnail: item.thumbnail,
-                picker: item.picker, 
-                downloadUrl: item.downloadUrl,
-                isAudio: item.isAudio,
-                url: item.url,
-                type: item.type
-            });
+            setResult({ ...item });
             setUrl(item.url);
+            
+            // Intelligent Source Selection
+            if (item.downloadUrl) {
+                const isInternal = item.downloadUrl.startsWith("/");
+                setVideoSrc(isInternal ? item.downloadUrl : `/api/proxy?url=${encodeURIComponent(item.downloadUrl)}`);
+            } else {
+                setVideoSrc("");
+            }
+            
             setError("");
             setScript("");
             setShowScript(false);
         }
     };
-    
     window.addEventListener('restore_download', handleRestore);
     return () => window.removeEventListener('restore_download', handleRestore);
   }, []);
 
-  const handleDownload = async (e: React.FormEvent, mode: "auto" | "audio" = "auto") => {
+  const handleDownload = async (e: React.FormEvent, reqMode: "auto" | "audio" = "auto") => {
     e.preventDefault();
-    if (!url) {
-        setError("Please paste a valid Instagram URL");
-        return;
-    }
-    
-    // Basic validation
-    if (!url.includes("instagram.com")) {
-      setError("Please enter a valid Instagram URL");
-      return;
-    }
-
     setError("");
+    setTranscriptionComplete(false);
+    setVideoSrc("");
+
+    if (!url) { setError("Please paste a valid video URL"); return; }
+    try { new URL(url); } catch { setError("Invalid URL format"); return; }
+
     setLoading(true);
-    setLoadingProgress(0);
+    setLoadingProgress(10);
     setResult(null);
     setScript("");
     setShowScript(false);
+    setTimeout(() => setLoadingProgress(25), 300);
 
     try {
-      // Simulate progress
-      setLoadingProgress(10);
-      
-      const effectiveMode = mode; // Reverting to auto mode to prevent Cobalt errors with audio-only requests
-
-      // Fetch from our backend API (Cobalt Proxy)
       const response = await fetch("/api/download", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ url, mode: effectiveMode }),
+        body: JSON.stringify({ url, mode: type === 'audio' ? 'audio' : 'auto' }),
       });
-
-      setLoadingProgress(40);
-
+      setLoadingProgress(50);
+      
       const data: CobaltResponse = await response.json();
+      if (!response.ok || data.error) throw new Error(data.error || "Download failed. Please check the link.");
 
-      if (!response.ok || data.error) {
-        throw new Error(data.error || "Download failed");
-      }
+      setLoadingProgress(85);
 
-      console.log("[Frontend] Cobalt response:", data);
+      const downloadUrl = data.url || (data.picker?.[0]?.url);
+      
+      // Intelligent Source Selection (Fixes Double Proxy Error)
+      const isInternal = downloadUrl?.startsWith("/");
+      const initialSrc = downloadUrl ? (isInternal ? downloadUrl : `/api/proxy?url=${encodeURIComponent(downloadUrl)}`) : "";
+      
+      setVideoSrc(initialSrc);
+      console.log("Setting initial video src:", initialSrc);
 
-      setLoadingProgress(60);
+      // Detect actual content type from the media URL, not just filename
+      const filename = data.filename || 'Content';
+      const mediaUrl = data.url || (data.picker?.[0]?.url) || '';
+      
+      // Check the actual media URL for type
+      const isVideo = mediaUrl.includes('.mp4') || mediaUrl.includes('.m3u8') || 
+                     mediaUrl.includes('video') || type === 'video' || type === 'reels';
+      const isPhoto = !isVideo && (mediaUrl.includes('.jpg') || mediaUrl.includes('.jpeg') || 
+                     mediaUrl.includes('.png') || mediaUrl.includes('.heic') ||
+                     mediaUrl.includes('.webp') || type === 'photo');
+      
+      const contentType = type === 'script' ? 'video' : 
+                         type === 'audio' ? 'audio' :
+                         isVideo ? 'video' :
+                         isPhoto ? 'photo' : type;
 
-      // Fetch thumbnail from Cobalt or Instagram OG tags
-      let thumbnail: string | null = data.thumb || null;
-      if (!thumbnail) {
-        try {
-          thumbnail = await fetchInstagramThumbnail(url);
-          setLoadingProgress(80);
-        } catch (e) {
-          console.log("[Frontend] Thumbnail fetch failed, continuing without it");
-        }
-      }
-
-      // Handle different response types
-      let newResult: DownloadResult;
-
-      if (data.status === "error") {
-        throw new Error(data.text || "Cobalt returned an error");
-      } else if (data.status === "picker") {
-        // Photo carousel or multiple items
-        newResult = {
-          thumbnail: data.picker?.[0]?.thumb || data.picker?.[0]?.url || thumbnail,
-          title: `Instagram ${data.picker?.length || 0} Photos`,
-          type: 'photo',
+      const newResult: DownloadResult = {
+          thumbnail: data.thumb || (mode.tag === "Instagram" ? await fetchInstagramThumbnail(url).catch(()=>null) : null),
+          title: filename,
+          type: contentType,
           url: url,
-          picker: data.picker,
-        };
-      } else if (data.status === "stream" || data.status === "redirect" || data.status === "tunnel") {
-        // Single video or audio (tunnel is for proxied downloads)
-        newResult = {
-          thumbnail: thumbnail,
-          title: data.filename || (mode === "audio" ? "Instagram Audio" : "Instagram Content"),
-          type: type === 'script' ? 'video' : type,
-          url: url,
-          downloadUrl: data.url,
-          isAudio: effectiveMode === "audio",
-        };
-      } else {
-        console.error("[Frontend] Unknown status:", data.status);
-        console.error("[Frontend] Full response:", JSON.stringify(data, null, 2));
-        throw new Error(`Unexpected response format: ${data.status}. Check console for details.`);
-      }
+          downloadUrl: initialSrc, // Use the Safe/Proxied URL!
+          isAudio: type === 'audio',
+          picker: data.picker 
+      };
 
       setResult(newResult);
-      
-      // Save to history (limit to 5 items)
-      const history = JSON.parse(localStorage.getItem("download_history") || "[]");
-      const filteredHistory = history.filter((item: any) => item.url !== url);
-      filteredHistory.unshift({ 
-        ...newResult,
-        timestamp: Date.now() 
-      });
-      localStorage.setItem("download_history", JSON.stringify(filteredHistory.slice(0, 5)));
-
       setLoadingProgress(100);
 
-      // Auto-extract script if type is script
-      if (type === "script" && newResult.downloadUrl) {
-          await performScriptExtraction(newResult.downloadUrl);
+      if (type === "script") {
+          startTranscription(downloadUrl || "");
       }
 
     } catch (err: any) {
-      console.error(err);
-      setError(err.message || "Failed to fetch content. Make sure the link is public and valid.");
+      setError(err.message || "Failed.");
     } finally {
       setLoading(false);
-      setTimeout(() => setLoadingProgress(0), 500);
+      setLoadingProgress(0);
     }
   };
 
-  const performScriptExtraction = async (downloadUrl: string) => {
-    setShowScript(true); 
-    setExtractingScript(true);
-    try {
-      const response = await fetch("/api/transcribe", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ url: downloadUrl }),
-      });
+  const startTranscription = async (videoUrl: string) => {
+      let finalUrl = videoUrl;
+      // Intelligently decide if we need the external proxy
+      // If it's an internal API link (e.g. /api/stream), DO NOT wrap it.
+      const isInternal = finalUrl.startsWith("/");
+      const proxyEndpoint = isInternal ? finalUrl : `/api/proxy?url=${encodeURIComponent(finalUrl)}`;
 
-      const data = await response.json();
-      if (!response.ok) throw new Error(data.error);
+      setTranscribing(true);
+      setShowScript(true); // Switch view
+      setTranscribeProgress(0);
+      setTranscriptionComplete(false);
       
-      setScript(data.formatted_script || data.raw_transcript);
-    } catch (err: any) {
-      console.error("Transcription failed:", err);
-      // Raw error message as requested
-      setScript(`Failed to extract script: ${err.message || "Unknown error"}. Please try again.`);
-    } finally {
-      setExtractingScript(false);
-    }
-  };
-
-  const handleExtractScript = async () => {
-    if (!result?.downloadUrl) return;
-    performScriptExtraction(result.downloadUrl);
-  };
-
-  const startDownload = (link: string, filename?: string) => {
-    if (!link) return;
-    
-    let downloadLink = link;
-    
-    // Check if the link is already proxied (from our updated API)
-    if (link.startsWith('/api/proxy')) {
-      // Ensure download=true is present
-      if (!link.includes('download=true')) {
-         // Check if query param exists
-         const separator = link.includes('?') ? '&' : '?';
-         downloadLink = `${link}${separator}download=true`;
+      // Ensure video source is maintained
+      if (!videoSrc) {
+          // If internal, likely safe to use directly
+          setVideoSrc(isInternal ? finalUrl : `/api/proxy?url=${encodeURIComponent(finalUrl)}`);
       }
+
+      const interval = setInterval(() => {
+        setTranscribeProgress(old => {
+            if (old >= 90) return 90;
+            return old + Math.random() * 2;
+        });
+      }, 500);
+
+      try {
+          // Robust Transcription Strategy: Server-Side Fetch
+          // Instead of downloading the Blob in browser (slow, CORS issues), 
+          // we send the URL to the server to download directly.
+          
+          // Use the original URL (state) if available, to allow backend to re-resolve fresh stream
+          // consistently. This fixes YouTube/GoogleVideo link expiration/IP mismatch issues.
+          let targetUrl = url || videoUrl;
+          
+          console.log("Requesting transcription for:", targetUrl);
+          
+          const response = await fetch("/api/transcribe", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ url: targetUrl }),
+          });
+
+          const data = await response.json();
+          if (!response.ok) throw new Error(data.error || "Transcription Failed");
+
+          setScript(data.script);
+          setTranscribeProgress(100);
+          setTranscriptionComplete(true);
+
+      } catch (err: any) {
+          console.error("Transcription Error:", err);
+          setScript(`[Error: ${err.message}]`);
+          setTranscribeProgress(0);
+          setError(err.message);
+      } finally {
+          clearInterval(interval);
+          setTranscribing(false);
+      }
+  };
+  
+  const startDownloadFile = (link: string, filename?: string) => {
+    if(!link) return;
+    
+    // Use provided filename or default based on link type
+    const defaultFilename = link.includes('.jpg') || link.includes('.jpeg') || 
+                           link.includes('.png') || link.includes('.heic') || 
+                           link.includes('.webp') ? 'photo.jpg' : 'video.mp4';
+    const finalFilename = filename || defaultFilename;
+    
+    // Check if link is internal (e.g. /api/stream)
+    let dLink = "";
+    if (link.startsWith("/")) {
+        // Internal Link: Append download param manually if needed
+        dLink = `${link}${link.includes('?') ? '&' : '?'}download=true&filename=${encodeURIComponent(finalFilename)}`;
     } else {
-      // Use our proxy endpoint to force download
-      downloadLink = `/api/proxy?url=${encodeURIComponent(link)}&filename=${encodeURIComponent(filename || 'instagram_video.mp4')}&download=true`;
+        // External Link: Use Proxy wrapper
+        dLink = `/api/proxy?url=${encodeURIComponent(link)}&filename=${encodeURIComponent(finalFilename)}&download=true`;
     }
     
-    // Create a temporary anchor
-    const a = document.createElement('a');
-    a.href = downloadLink;
-    a.download = filename || 'instagram_video.mp4';
-    
-    // Trigger download immediately
-    document.body.appendChild(a);
-    a.click();
-    
-    // Cleanup
-    setTimeout(() => {
-      document.body.removeChild(a);
-    }, 100);
+    const a = document.createElement('a'); a.href = dLink; a.download = finalFilename;
+    document.body.appendChild(a); a.click(); setTimeout(()=>document.body.removeChild(a),100);
+  };
+
+  const handleVideoError = () => {
+      // If Proxy Fails, try Direct URL fallback
+      console.log("Video Proxy failed to load. Falling back to direct URL.");
+      if (result?.downloadUrl && videoSrc.includes("/api/proxy")) {
+          setVideoSrc(result.downloadUrl);
+      }
   };
 
   return (
-    <div className={`w-full mx-auto transition-all duration-300 ${showScript ? 'max-w-6xl' : 'max-w-2xl'}`}>
-      <div className="bg-surface p-2 shadow-xl border ring-4 ring-primary/5 border-border" style={{ borderRadius: 'calc(var(--radius) * 1.5)' }}>
-        <form onSubmit={handleDownload} className="relative flex items-center">
-          <div className="absolute left-4 text-muted">
-            <LinkIcon className="w-5 h-5" />
+    <div className={`w-full mx-auto transition-all duration-700 ease-in-out ${showScript ? 'max-w-[1400px]' : 'max-w-3xl'}`}>
+      
+      {/* Search Header */}
+      <div className={`mb-10 text-center transition-all duration-300 ${url ? 'opacity-100 translate-y-0' : 'opacity-90 translate-y-1'}`}>
+          <div className={`inline-flex items-center gap-2 px-4 py-1.5 rounded-full text-xs font-semibold uppercase tracking-widest mb-4 border ${mode.bg} ${mode.color} ${mode.border}`}>
+             <ModeIcon className="w-3.5 h-3.5" />
+             <span>{mode.tag}</span>
           </div>
-          <input
-            type="text"
-            value={url}
-            onChange={(e) => setUrl(e.target.value)}
-            placeholder={`Paste Instagram ${type === 'script' ? 'Reel/Video for Script' : type} link...`}
-            className="w-full flex-1 py-4.5 pl-12 pr-32 bg-transparent text-base md:text-lg outline-none placeholder:text-muted min-w-0 truncate text-foreground"
-          />
-          <button
-            type="submit"
-            disabled={loading}
-            className="absolute right-1.5 top-1.5 bottom-1.5 text-white px-6 font-semibold transition-all flex items-center justify-center min-w-[120px] bg-primary hover:bg-primary-hover rounded-lg"
-          >
-            {loading ? (
-              <Loader2 className="w-5 h-5 animate-spin" />
-            ) : (
-              <span className="flex items-center gap-2">
-                {type === 'script' ? (
-                   <>Extract Script <Captions className="w-4 h-4" /></>
-                ) : (
-                   <>Download <ArrowRight className="w-4 h-4" /></>
-                )}
-              </span>
-            )}
-          </button>
-        </form>
+          
+          <h1 className="text-4xl md:text-5xl font-bold tracking-tight pb-2 leading-tight text-neutral-900 dark:text-neutral-100">
+              {mode.title}
+          </h1>
+          
+          <p className="text-neutral-500 dark:text-neutral-400 mt-3 text-lg font-medium max-w-xl mx-auto opacity-80">
+             {type === 'script' ? 'Professional AI Transcription for Videos.' : 
+              type === 'photo' ? 'Download HD Photos Instantly.' :
+              'Download High-Quality Videos from All Major Platforms.'}
+          </p>
       </div>
 
-      {/* Progress Bar */}
-      {loading && loadingProgress > 0 && (
-        <div className="mt-4 w-full bg-gray-200 rounded-full h-2 overflow-hidden">
-          <div 
-            className="h-full bg-gradient-to-r from-pink-500 to-purple-500 transition-all duration-300 ease-out"
-            style={{ width: `${loadingProgress}%` }}
-          />
+      {/* Input Field */}
+      <div className={`relative group transition-all duration-300 z-10 ${showScript ? 'opacity-0 h-0 overflow-hidden pointer-events-none' : 'opacity-100 scale-100'}`}>
+        <div className={`absolute -inset-0.5 rounded-[2rem] bg-gradient-to-r from-neutral-200 to-neutral-200 opacity-0 blur-2xl transition duration-1000 group-hover:opacity-50 dark:from-neutral-800 dark:to-neutral-900`}></div>
+        
+        <div className="relative bg-white p-2 shadow-xl border ring-1 ring-black/5 border-neutral-100 rounded-[2rem] dark:bg-neutral-900 dark:border-neutral-800 dark:ring-white/5 transition-all">
+            <form onSubmit={handleDownload} className="relative flex items-center">
+                <div className={`absolute left-5 transition-colors duration-300 ${mode.color}`}>
+                    <ModeIcon className="w-6 h-6" />
+                </div>
+                <input
+                    type="text"
+                    value={url}
+                    onChange={(e) => setUrl(e.target.value)}
+                    placeholder={type === 'script' ? 'Paste video URL to transcribe...' : 'Paste video or photo URL...'}
+                    className="w-full flex-1 py-4 pl-14 pr-36 bg-transparent text-lg font-medium outline-none placeholder:text-neutral-400 min-w-0 truncate text-neutral-900 dark:text-neutral-100"
+                />
+                <button
+                    type="submit"
+                    disabled={loading}
+                    className="absolute right-2 top-2 bottom-2 text-white px-6 md:px-8 font-semibold transition-all flex items-center justify-center min-w-[130px] bg-neutral-900 hover:bg-black rounded-[1.5rem] shadow-none hover:shadow-lg active:scale-95 dark:bg-white dark:text-black dark:hover:bg-neutral-200"
+                >
+                    {loading ? <Loader2 className="w-4 h-4 animate-spin" /> : 
+                     type === 'script' ? 
+                     <span className="flex gap-2 items-center text-sm">AI Script <Sparkles className="w-3.5 h-3.5" /></span> : 
+                     <span className="flex gap-2 items-center text-sm">Download <ArrowRight className="w-4 h-4" /></span>
+                    }
+                </button>
+            </form>
+        </div>
+      </div>
+
+      {loading && <div className="mt-8 w-full bg-neutral-100 rounded-full h-0.5 overflow-hidden dark:bg-neutral-800"><div className="h-full bg-neutral-900 dark:bg-neutral-100 transition-all duration-300 ease-out" style={{ width: `${loadingProgress}%` }} /></div>}
+      
+      {error && (
+        <div className="mt-6 mx-auto max-w-lg p-3 px-4 bg-red-50/50 border border-red-100 rounded-xl flex items-center justify-center gap-3 text-red-700 shadow-sm animate-in fade-in slide-in-from-top-2 dark:bg-red-900/10 dark:border-red-900/30 dark:text-red-400 text-center">
+            <AlertTriangle className="w-4 h-4 flex-shrink-0" />
+            <p className="text-sm font-medium">{error}</p>
         </div>
       )}
 
-      {error && (
-        <p className="mt-3 text-red-500 text-sm text-center font-medium animate-in fade-in slide-in-from-top-1">
-          {error}
-        </p>
-      )}
-
-    {/* Result Card */}
+      {/* Results */}
       {result && (
-        <div className="mt-8 bg-surface rounded-2xl p-6 shadow-lg border animate-in fade-in slide-in-from-bottom-4 border-border">
-          {/* Script Extraction View (Responsive Grid) */}
+        <div className="mt-8 animate-in fade-in slide-in-from-bottom-8 duration-500">
           {showScript ? (
-            <div className="grid grid-cols-1 lg:grid-cols-2 gap-8 h-full">
-               {/* Left: Video Player */}
-               <div className="flex flex-col gap-4">
-                  <div className="aspect-[9/16] max-h-[600px] w-full bg-black rounded-xl overflow-hidden relative shadow-lg mx-auto flex items-center justify-center">
-                    {result.downloadUrl ? (
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 lg:gap-8 min-h-[500px] h-auto">
+               
+               {/* Video Player (Preview View) */}
+               <div className="flex flex-col gap-4 order-1 lg:order-none">
+                  <div className="w-full h-[300px] sm:h-[400px] lg:h-[500px] flex items-center justify-center">
+                    {/* Error State or Video Player */}
+                    {videoSrc ? (
                         <video 
-                            src={result.downloadUrl} 
-                            className="w-full h-full object-contain"
+                            ref={videoRef}
+                            src={videoSrc} // Uses proxyUrl first, falls back to direct on Error
+                            key={videoSrc} // Force re-render on src change
+                            className="w-full h-full object-contain rounded-2xl shadow-sm bg-black/5 dark:bg-neutral-900 border border-neutral-200/50 dark:border-neutral-800"
                             controls
                             playsInline
-                            loop
-                            // Auto-play if desired, but user might want to extract first
+                            crossOrigin="anonymous" 
+                            onError={handleVideoError} 
                         />
                     ) : (
-                        <p className="text-white">Video not available</p>
+                        <div className="absolute inset-0 flex flex-col items-center justify-center text-neutral-400 gap-2">
+                            <AlertCircle className="w-8 h-8 opacity-50" />
+                            <p>Preview Unavailable</p>
+                        </div>
                     )}
                   </div>
-                  <div className="flex justify-center">
+                  
+                  <div className="flex flex-col sm:flex-row gap-3">
                     <button 
-                       onClick={() => startDownload(result.downloadUrl || '', result.title)}
-                       className="w-full max-w-xs text-white px-5 py-2.5 rounded-lg font-medium text-sm flex items-center gap-2 hover:opacity-90 transition-opacity justify-center bg-primary"
-                     >
-                       <Download className="w-4 h-4" /> 
-                       {result.isAudio ? 'Download Audio' : 'Download Video'}
-                     </button>
-                  </div>
-               </div>
-
-               {/* Right: Script Editor */}
-               <div className="h-full min-h-[400px]">
-                  <ScriptEditor 
-                    initialScript={script} 
-                    loading={extractingScript} 
-                    className="h-full shadow-none border-0 bg-transparent" 
-                  />
-               </div>
-            </div>
-          ) : (
-             /* Standard View */
-             result.picker && result.picker.length > 0 ? (
-            <div>
-              <h3 className="font-bold text-lg mb-4">{result.title}</h3>
-              <div className="grid grid-cols-2 md:grid-cols-3 gap-4 mb-4">
-                {result.picker.map((item, index) => (
-                  <div key={index} className="relative group h-48 bg-background-alt rounded-lg overflow-hidden">
-                    <MediaThumbnail 
-                      thumbnail={item.type === 'photo' ? item.url : item.thumb} 
-                      videoUrl={item.url} 
-                      type={item.type} 
-                      alt={`Photo ${index + 1}`}
-                      className="w-full h-full"
-                    />
-                    <button
-                      onClick={() => startDownload(item.url, `instagram_photo_${index + 1}.jpg`)}
-                      className="absolute inset-0 bg-black/50 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center rounded-lg"
+                         onClick={() => { setShowScript(false); setScript(""); }}
+                         className="flex-1 py-3 px-4 bg-white text-neutral-700 border border-neutral-200 rounded-xl font-medium text-sm hover:bg-neutral-50 transition-colors dark:bg-neutral-900 dark:text-neutral-300 dark:border-neutral-700 dark:hover:bg-neutral-800"
                     >
-                      <Download className="w-8 h-8 text-white" />
+                         ← Back
+                    </button>
+                    <button 
+                        onClick={() => startDownloadFile(result.downloadUrl || '', result.title)}
+                        className="flex-[2] py-3 px-4 bg-neutral-900 text-white rounded-xl font-medium text-sm flex items-center justify-center gap-2 hover:bg-black transition-transform active:scale-[0.99] dark:bg-white dark:text-black dark:hover:bg-neutral-200"
+                    >
+                        <Download className="w-4 h-4" /> Download Video
                     </button>
                   </div>
-                ))}
-              </div>
-              <button
-                onClick={() => {
-                  result.picker?.forEach((item, i) => {
-                    setTimeout(() => startDownload(item.url, `instagram_photo_${i + 1}.jpg`), i * 500);
-                  });
-                }}
-                className="w-full text-white px-5 py-3 rounded-lg font-medium flex items-center justify-center gap-2 hover:opacity-90 transition-opacity bg-primary"
-              >
-                <Download className="w-5 h-5" /> Download All Photos
-              </button>
+               </div>
+
+               {/* Script Editor */}
+               <div className="relative flex flex-col bg-white rounded-2xl shadow-sm border border-neutral-200 overflow-hidden dark:bg-neutral-900 dark:border-neutral-800 order-2 lg:order-none min-h-[500px]">
+                  {/* Analysis Overlay */}
+                  {transcribing && (
+                      <div className="absolute inset-0 z-20 flex flex-col items-center justify-center bg-white/95 backdrop-blur-sm transition-all duration-300 dark:bg-neutral-900/95">
+                          <div className="p-6">
+                              <CircularProgress progress={transcribeProgress} size={120} strokeWidth={6} color="text-neutral-900 dark:text-white" />
+                          </div>
+                          <p className="mt-4 text-sm font-medium text-neutral-500 animate-pulse">Analyzing Audio...</p>
+                      </div>
+                  )}
+
+                  {/* Clean Editor Header with Status */}
+                  <div className="px-5 py-4 border-b border-neutral-100 flex justify-between items-center bg-neutral-50/50 dark:bg-neutral-900 dark:border-neutral-800">
+                      <div className="flex items-center gap-2">
+                        <Sparkles className={`w-4 h-4 ${transcriptionComplete ? "text-green-600 dark:text-green-400" : "text-violet-600 dark:text-violet-400"}`} />
+                        <span className="text-xs font-bold text-neutral-500 uppercase tracking-widest dark:text-neutral-400">
+                            {transcriptionComplete ? "AI Script • Ready" : "AI Script"}
+                        </span>
+                      </div>
+                      {script && (
+                          <button onClick={() => navigator.clipboard.writeText(script)} className="text-xs font-bold text-neutral-700 hover:text-black flex items-center gap-1.5 transition-colors px-3 py-1.5 bg-white border border-neutral-200 rounded-lg shadow-sm hover:shadow-md dark:bg-neutral-800 dark:text-neutral-300 dark:border-neutral-700 dark:hover:text-white dark:hover:bg-neutral-700">
+                              <FileText className="w-3.5 h-3.5" /> Copy
+                          </button>
+                      )}
+                  </div>
+
+                  <div className="flex-1 flex flex-col relative">
+                      <ScriptEditor 
+                        initialScript={script} 
+                        loading={false}
+                        className="h-full w-full border-0 shadow-none resize-none focus:ring-0 text-base leading-relaxed p-5 font-normal text-neutral-800 dark:bg-transparent dark:text-neutral-200" 
+                      />
+                  </div>
+               </div>
             </div>
           ) : (
-            /* Single Video or Audio */
-            <div className="flex flex-col md:flex-row gap-6 items-center">
-              {/* Vertical Reel Thumbnail (9:16 aspect ratio) */}
-              <div className={`bg-background-alt rounded-xl overflow-hidden flex-shrink-0 relative group flex items-center justify-center ${
-                result.isAudio || (result.picker && result.picker.length > 0) || type === 'photo' 
-                  ? 'w-32 h-32 sm:w-40 sm:h-40' 
-                  : 'w-24 h-40 sm:w-28 sm:h-48'
-              }`}>
-                <MediaThumbnail 
-                  key={result.url || result.downloadUrl}
-                  thumbnail={result.thumbnail} 
-                  videoUrl={result.downloadUrl} 
-                  type={result.isAudio ? 'audio' : type} 
-                  autoPlay={true}
-                  instagramUrl={result.url}
-                />
-              </div>
-              <div className="flex-1 text-center md:text-left w-full min-w-0">
-                <h3 className="font-bold text-base mb-1 break-words px-2 md:px-0 text-heading">{result.title}</h3>
-                <div className="flex flex-col sm:flex-row gap-3 justify-center md:justify-start px-2 md:px-0 mt-4">
-                  {/* Main Download Button */}
-                  <button 
-                    onClick={() => startDownload(result.downloadUrl || '', result.title)}
-                    className="text-white px-5 py-2.5 rounded-lg font-medium text-sm flex items-center gap-2 hover:opacity-90 transition-opacity justify-center bg-primary"
-                  >
-                    <Download className="w-4 h-4" /> 
-                    {result.isAudio ? 'Download Audio' : 'Download Video'}
-                  </button>
-
-                  {/* Extract Script Button */}
-                  {!result.isAudio && type !== 'photo' && (
-                     <button 
-                       onClick={handleExtractScript}
-                       className="text-primary bg-primary/10 border border-primary/20 px-5 py-2.5 rounded-lg font-medium text-sm flex items-center gap-2 hover:bg-primary/20 transition-all justify-center"
-                     >
-                       <Captions className="w-4 h-4" />
-                       Extract Script
-                     </button>
-                  )}
-                </div>
-              </div>
-            </div>
-          ))}
+             /* Standard Result (Default View) */
+             <div className="bg-white/80 backdrop-blur-xl p-4 sm:p-6 md:p-8 rounded-3xl shadow-2xl border border-neutral-200/50 flex flex-col gap-6 items-center dark:bg-neutral-900/80 dark:border-neutral-800/50">
+                {/* Check if carousel (picker exists with multiple items) */}
+                {result.picker && result.picker.length > 1 ? (
+                   /* Carousel View */
+                   <div className="w-full max-w-5xl mx-auto space-y-6">
+                      <div className="text-center">
+                         <div className="inline-block px-3 py-1.5 bg-gradient-to-r from-purple-50 to-pink-50 dark:from-purple-900/20 dark:to-pink-900/20 text-purple-700 dark:text-purple-400 text-xs font-bold rounded-full mb-3 border border-purple-200/50 dark:border-purple-800/30 shadow-sm">
+                            📸 CAROUSEL ({result.picker.length} items)
+                         </div>
+                         <h3 className="font-bold text-lg sm:text-xl md:text-2xl text-neutral-900 dark:text-white mb-2">{result.title}</h3>
+                         <p className="text-sm text-neutral-500 dark:text-neutral-400 font-medium">Download all items individually</p>
+                      </div>
+                      
+                      {/* Carousel Grid - Centered with curved images */}
+                      <div className="flex flex-wrap justify-center items-center gap-3 w-full">
+                         {result.picker.map((item, index) => {
+                            const itemUrl = item.url.startsWith("/") ? item.url : `/api/proxy?url=${encodeURIComponent(item.url)}`;
+                            const itemType = item.type || 'photo';
+                            const itemFilename = `instagram_carousel_${index + 1}.${itemType === 'photo' ? 'jpg' : 'mp4'}`;
+                            
+                            return (
+                               <div key={index} className="group relative aspect-square bg-neutral-100 dark:bg-neutral-800 rounded-2xl overflow-hidden shadow-sm hover:shadow-lg transition-all w-[calc(50%-0.375rem)] sm:w-[calc(33.333%-0.5rem)] md:w-[calc(25%-0.5625rem)] max-w-xs">
+                                  {/* Media - shows full photo without cropping */}
+                                  <div className="absolute inset-0 flex items-center justify-center p-1">
+                                     {itemType === 'photo' ? (
+                                        <img 
+                                           src={itemUrl}
+                                           alt={`Item ${index + 1}`}
+                                           className="max-w-full max-h-full w-auto h-auto object-contain rounded-xl"
+                                           onError={(e) => {
+                                              // Fallback to MediaThumbnail on error
+                                              e.currentTarget.style.display = 'none';
+                                           }}
+                                        />
+                                     ) : (
+                                        <MediaThumbnail 
+                                           thumbnail={item.thumb} 
+                                           videoUrl={itemUrl} 
+                                           type={itemType}
+                                           autoPlay={false}
+                                        />
+                                     )}
+                                  </div>
+                                  
+                                  {/* Hover overlay with download button */}
+                                  <div className="absolute inset-0 bg-gradient-to-t from-black/60 via-black/0 to-black/0 opacity-0 group-hover:opacity-100 transition-opacity flex items-end justify-center p-3">
+                                     <button 
+                                        onClick={() => startDownloadFile(itemUrl, itemFilename)}
+                                        className="w-full bg-white text-neutral-900 py-2.5 rounded-xl font-semibold text-sm hover:bg-neutral-50 transition-colors shadow-lg flex items-center justify-center gap-2"
+                                     >
+                                        <Download className="w-4 h-4" />
+                                        Download
+                                     </button>
+                                  </div>
+                                  
+                                  {/* Item number badge */}
+                                  <div className="absolute top-2 right-2 bg-white/90 backdrop-blur-sm text-neutral-900 text-xs font-bold px-2.5 py-1 rounded-full shadow-sm">
+                                     {index + 1}
+                                  </div>
+                               </div>
+                            );
+                         })}
+                      </div>
+                      
+                      {/* Download All Button - Premium SaaS Style */}
+                      <button 
+                         onClick={() => {
+                            result.picker?.forEach((item, index) => {
+                               const itemUrl = item.url.startsWith("/") ? item.url : `/api/proxy?url=${encodeURIComponent(item.url)}`;
+                               const itemType = item.type || 'photo';
+                               const itemFilename = `instagram_carousel_${index + 1}.${itemType === 'photo' ? 'jpg' : 'mp4'}`;
+                               setTimeout(() => startDownloadFile(itemUrl, itemFilename), index * 500);
+                            });
+                         }}
+                         className="w-full py-3.5 bg-neutral-900 dark:bg-white text-white dark:text-neutral-900 rounded-xl font-semibold hover:bg-neutral-800 dark:hover:bg-neutral-100 transition-colors flex justify-center items-center gap-2.5 text-sm shadow-sm"
+                      >
+                         <Download className="w-4 h-4" /> Download All ({result.picker.length} items)
+                      </button>
+                   </div>
+                ) : (
+                   /* Single Item View */
+                   <div className="w-full flex flex-col md:flex-row gap-6 md:gap-8">
+                      {/* Thumbnail - Adaptive aspect ratio for mobile */}
+                      <div className="w-full md:w-56 aspect-[4/5] md:aspect-[3/4] bg-gradient-to-br from-neutral-100 to-neutral-200 dark:from-neutral-800 dark:to-neutral-900 rounded-2xl overflow-hidden shadow-lg flex-shrink-0 mx-auto md:mx-0 ring-1 ring-black/5 dark:ring-white/5">
+                          <MediaThumbnail 
+                              thumbnail={result.thumbnail} 
+                              videoUrl={result.downloadUrl} 
+                              type={result.type} 
+                              autoPlay={true} // Enable Live Preview!
+                          />
+                      </div>
+                      
+                      <div className="flex-1 w-full space-y-5 text-center md:text-left min-w-0">
+                          <div>
+                              <div className="inline-block px-3 py-1.5 bg-gradient-to-r from-green-50 to-emerald-50 dark:from-green-900/20 dark:to-emerald-900/20 text-green-700 dark:text-green-400 text-xs font-bold rounded-full mb-3 border border-green-200/50 dark:border-green-800/30 shadow-sm">
+                                  ✓ READY TO DOWNLOAD
+                              </div>
+                               {/* Responsive title sizing */}
+                              <h3 className="font-bold text-lg sm:text-xl md:text-2xl text-neutral-900 line-clamp-2 break-words leading-tight dark:text-white mb-2" title={result.title}>{result.title}</h3>
+                              <p className="text-sm text-neutral-500 dark:text-neutral-400 font-medium">
+                                  {result.type === 'photo' ? 'High Quality • Photo • JPG/PNG' : 
+                                   result.type === 'audio' ? 'High Quality • Audio • MP3' :
+                                   'High Quality • Video • MP4'}
+                              </p>
+                          </div>
+                          
+                          {/* Improved button layout for mobile */}
+                          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-2">
+                               <button 
+                                  onClick={() => startDownloadFile(result.downloadUrl || '', result.title)} 
+                                  className="py-4 sm:py-3.5 bg-gradient-to-r from-neutral-900 to-black dark:from-white dark:to-neutral-100 text-white dark:text-black rounded-xl font-bold hover:shadow-xl transition-all flex justify-center items-center gap-2.5 text-sm sm:text-base shadow-lg active:scale-[0.97] touch-manipulation"
+                               >
+                                  <Download className="w-4 h-4 sm:w-5 sm:h-5" /> Download
+                               </button>
+                               {type !== 'photo' && (
+                                   <button 
+                                      onClick={() => startTranscription(result.downloadUrl || '')} 
+                                      className="py-4 sm:py-3.5 bg-white/80 backdrop-blur-sm text-neutral-900 border-2 border-neutral-200 dark:border-neutral-700 rounded-xl font-bold hover:bg-neutral-50 dark:bg-neutral-800/80 dark:text-white dark:hover:bg-neutral-700 transition-all flex justify-center items-center gap-2.5 text-sm sm:text-base shadow-md active:scale-[0.97] touch-manipulation"
+                                   >
+                                      <Sparkles className="w-4 h-4 sm:w-5 sm:h-5" /> AI Script
+                                   </button>
+                               )}
+                          </div>
+                      </div>
+                   </div>
+                )}
+             </div>
+          )}
         </div>
       )}
     </div>

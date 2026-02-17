@@ -1,0 +1,77 @@
+
+import { NextResponse } from "next/server";
+import type { NextRequest } from "next/server";
+
+// ---------------------------------------------------------
+// SECURITY CONFIGURATION
+// ---------------------------------------------------------
+const ALLOWED_ORIGINS = [
+    "http://localhost:3000",
+    "http://127.0.0.1:3000",
+    // Add your production domains here later
+    "https://video-downloder.pages.dev", 
+    process.env.NEXT_PUBLIC_SITE_URL, 
+];
+
+export function middleware(request: NextRequest) {
+    const origin = request.headers.get("origin") || "";
+    const referer = request.headers.get("referer") || "";
+
+    // Handle API Routes Security
+    if (request.nextUrl.pathname.startsWith("/api")) {
+        
+        // 1. Handle OPTIONS (Preflight)
+        if (request.method === "OPTIONS") {
+             return new NextResponse(null, {
+                 status: 200,
+                 headers: {
+                     "Access-Control-Allow-Origin": origin || "*",
+                     "Access-Control-Allow-Methods": "GET, POST, OPTIONS",
+                     "Access-Control-Allow-Headers": "Content-Type, Authorization",
+                 },
+             });
+        }
+
+        // 2. Strict Origin Check (Production Only)
+        // In Dev, we are lenient. In Prod, we block unknown origins.
+        if (process.env.NODE_ENV === 'production') {
+            const isAllowed = ALLOWED_ORIGINS.some(allowed => 
+                allowed && (origin.startsWith(allowed) || referer.startsWith(allowed))
+            );
+            
+            // Allow if no origin (backend-to-backend) OR if explicitly allowed
+            // WARNING: Blocking empty origin might block mobile apps/postman. 
+            // If you want strict browser-only: uncomment the check below.
+            
+            /*
+            if (origin && !isAllowed) {
+                return new NextResponse(JSON.stringify({ error: "Unauthorized Origin" }), { status: 403 });
+            }
+            */
+        }
+
+        // 3. Rate Limiting Hint
+        // (Real rate limiting should be done via Cloudflare WAF or Upstash Ratelimit)
+        
+        const response = NextResponse.next();
+
+        // 4. Inject CORS Headers
+        if (origin) {
+            response.headers.set("Access-Control-Allow-Origin", origin);
+        }
+        response.headers.set("Access-Control-Allow-Methods", "GET, POST, OPTIONS");
+        response.headers.set("Access-Control-Allow-Headers", "Content-Type, Authorization");
+        
+        // Security Headers
+        response.headers.set("X-Content-Type-Options", "nosniff");
+        response.headers.set("X-Frame-Options", "DENY");
+
+        return response;
+    }
+
+    return NextResponse.next();
+}
+
+export const config = {
+    matcher: '/api/:path*',
+};

@@ -1,0 +1,15 @@
+name = "video-downloader"
+compatibility_date = "2024-02-17"
+compatibility_flags = ["nodejs_compat"]
+
+[vars]
+# Environment Variables (Secrets should be added via 'wrangler secret put')
+# COBALT_API_URL = "https://api.cobalt.tools"
+# GROQ_API_URL = "https://api.groq.com/openai/v1/audio/transcriptions"
+
+# If using Cloudflare Pages, this file is optional but recommended for local dev bindings.
+# The build output directory for Next.js on Pages is usually ".vercel/output/static" or similar
+# via @cloudflare/next-on-pages.
+
+[site]
+bucket = ".vercel/output/static"

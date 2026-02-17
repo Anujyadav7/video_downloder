@@ -1,137 +1,156 @@
-
 import { NextRequest, NextResponse } from "next/server";
 
-// Cobalt API Response Types
-export interface CobaltResponse {
-  status: "stream" | "redirect" | "picker" | "error" | "tunnel";
+export const runtime = "edge"; // Mandatory for Cloudflare Workers/Pages
+
+// --- Configuration ---
+// Note: In Cloudflare Workers, process.env is replaced by global env variables
+// However, Next.js Edge Runtime handles process.env correctly via build-time inlining or runtime binding.
+const COBALT_INSTANCES = [
+  "http://127.0.0.1:9000", // Local Docker (Development)
+  process.env.COBALT_API_URL, // Production Variable
+  "https://api.cobalt.tools",
+  "https://cobalt.kwiatekmiki.com", // Reliable Public Instance
+  "https://co.wuk.sh"
+].filter(Boolean) as string[];
+
+type CobaltResponse = {
+  status: "redirect" | "stream" | "success" | "rate-limit" | "error" | "picker";
   url?: string;
   filename?: string;
-  text?: string; 
-  picker?: Array<{
-    url: string;
-    type: "photo" | "video";
-    thumb?: string;
-  }>;
-}
+  picker?: any[];
+  audio?: string;
+  thumb?: string;
+  text?: string;
+};
 
-// List of Cobalt Instances (Prioritized)
-const COBALT_INSTANCES = [
-    "https://api.cobalt.tools",             // Official (Strict)
-    "https://cobalt.api.kwiatekmiki.pl",    // Reliable Public Mirror
-    "https://dl.khames.com/api",            // Backup Mirror
-    "http://127.0.0.1:9000"                 // Local Fallback
-];
-
+// --- Main Handler ---
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
-    const { url, mode = "auto" } = body; 
+    const { url, isAudioOnly } = body;
+    const cleanUrl = url ? url.split("?")[0] : url;
 
-    if (!url) {
-      return NextResponse.json({ error: "URL is required" }, { status: 400 });
-    }
+    console.log(`[Download] Processing: ${cleanUrl}`);
 
-    console.log(`[Cobalt Manager] Processing: ${url}`);
+    // --- Primary Strategy: Cobalt (Supports IG, YT, TikTok, Twitter, Facebook) ---
+    // We try multiple instances for redundancy.
+    let lastError = null;
 
-    // Prepare Payload
-    const cobaltPayload: any = { url };
-    if (mode === "audio") {
-      cobaltPayload.isAudioOnly = true;
-      cobaltPayload.aFormat = "mp3"; 
-    }
+    for (const instance of COBALT_INSTANCES) {
+      try {
+        let endpoint = instance;
+        if (!endpoint.endsWith("/")) endpoint += "/";
 
-    let finalData: CobaltResponse | null = null;
-    let successInstance = "";
+        console.log(`[Download] Trying provider: ${endpoint}`);
 
-    // ---------------------------------------------------------
-    // MULTI-INSTANCE FALLBACK LOOP
-    // ---------------------------------------------------------
-    for (const instanceUrl of COBALT_INSTANCES) {
-        if (!instanceUrl) continue;
-        
-        try {
-            console.log(`[Cobalt Manager] Trying instance: ${instanceUrl}`);
-            
-            const response = await fetch(instanceUrl, {
-                method: "POST",
-                headers: {
-                    "Content-Type": "application/json",
-                    "Accept": "application/json"
-                },
-                body: JSON.stringify(cobaltPayload),
-                signal: AbortSignal.timeout(10000) // 10s timeout per instance
-            });
+        // Create AbortController for timeout
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), 8000); // 8s timeout
 
-            if (!response.ok) {
-                console.warn(`[Cobalt Manager] ${instanceUrl} failed with status ${response.status}`);
-                continue; 
-            }
+        const response = await fetch(endpoint, {
+          method: "POST",
+          headers: {
+            "Accept": "application/json",
+            "Content-Type": "application/json",
+            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+          },
+          body: JSON.stringify({
+            url: cleanUrl,
+            videoQuality: "max",
+            audioFormat: "mp3",
+            filenameStyle: "basic",
+            downloadMode: isAudioOnly ? "audio" : "auto",
+            youtubeVideoCodec: "h264",
+            alwaysProxy: true // Request proxying to bypass geo-restrictions
+          }),
+          signal: controller.signal
+        });
 
-            const contentType = response.headers.get("content-type");
-            if (!contentType || !contentType.includes("json")) {
-                console.warn(`[Cobalt Manager] ${instanceUrl} returned non-JSON`);
-                continue;
-            }
+        clearTimeout(timeoutId);
 
-            const data: CobaltResponse = await response.json();
-            
-            // Validate Logic
-            if (data.status === "error") {
-                console.warn(`[Cobalt Manager] ${instanceUrl} returned error: ${data.text}`);
-                // If it's a specific "content not found" error, maybe don't retry? 
-                // But often one instance is blocked while another isn't. Retry is safer.
-                continue; 
-            }
-
-            // Success!
-            finalData = data;
-            successInstance = instanceUrl;
-            break; // Stop loop
-
-        } catch (e: any) {
-            console.warn(`[Cobalt Manager] Connection failed to ${instanceUrl}: ${e.message}`);
+        if (!response.ok) {
+           const errorText = await response.text();
+           console.warn(`[Download] Provider ${endpoint} failed: ${response.status} - ${errorText.substring(0, 100)}`);
+           lastError = new Error(`HTTP ${response.status}: ${errorText}`);
+           continue; // Try next instance
         }
+
+        const data: any = await response.json();
+
+        // Validate Response
+        if (data.status === "error" || data.status === "rate-limit") {
+          throw new Error(data.text || "Provider returned error status");
+        }
+
+        // --- Handle Carousel (Picker) ---
+        if (data.status === "picker" && data.picker && data.picker.length > 0) {
+            console.log(`[Download] Carousel found with ${data.picker.length} items`);
+            
+            // Map picker items responsibly
+            const pickerItems = data.picker.map((item: any) => {
+                const itemUrl = item.url;
+                const isPhoto = itemUrl.includes('.jpg') || itemUrl.includes('.jpeg') || 
+                               itemUrl.includes('.png') || itemUrl.includes('.heic') ||
+                               itemUrl.includes('.webp');
+                
+                return {
+                    url: itemUrl,
+                    type: isPhoto ? 'photo' : 'video',
+                    thumb: item.thumb || itemUrl
+                };
+            });
+            
+            return NextResponse.json({
+                status: "picker",
+                picker: pickerItems,
+                // Fallback URL usually first item's URL
+                url: pickerItems[0]?.url 
+            });
+        }
+
+        // --- Handle Direct Download ---
+        if (data.url || data.status === "redirect" || data.status === "stream") {
+            const mediaUrl = data.url;
+            
+            // Intelligent Filename Generation
+            const isPhoto = mediaUrl.includes('.jpg') || mediaUrl.includes('.jpeg') || 
+                           mediaUrl.includes('.png') || mediaUrl.includes('.heic') ||
+                           mediaUrl.includes('.webp');
+            const isVideo = mediaUrl.includes('.mp4') || mediaUrl.includes('.m3u8') || mediaUrl.includes('.webm');
+            
+            // Use random ID for filename to avoid collisions
+            const randomId = Math.random().toString(36).substring(2, 10);
+            const extension = isAudioOnly ? "mp3" : (isPhoto ? "jpg" : "mp4");
+            const filename = `download_${randomId}.${extension}`;
+
+            return NextResponse.json({
+                status: "success",
+                url: mediaUrl,
+                filename: filename,
+                thumb: data.thumb
+            });
+        }
+        
+        throw new Error("Invalid response format from provider");
+
+      } catch (e: any) {
+        lastError = e;
+        console.warn(`[Download] Provider error: ${e.message}`);
+        // Continue to next instance loop
+      }
     }
 
-    if (!finalData) {
-        return NextResponse.json(
-            { error: "All download servers failed. Please check the URL or try again later." }, 
-            { status: 503 }
-        );
-    }
-
-    console.log(`[Cobalt Manager] Success via ${successInstance}`);
-
-    // ---------------------------------------------------------
-    // PROXY URL GENERATION
-    // ---------------------------------------------------------
-    // We proxy legitimate media URLs to avoid Mixed Content / CORS / Expiry issues
-    const proxyUrl = (targetUrl: string, filename: string = "download") => {
-      if (!targetUrl) return "";
-      return `/api/proxy?url=${encodeURIComponent(targetUrl)}&filename=${encodeURIComponent(filename)}`;
-    };
-
-    const cleanData = { ...finalData }; // Clone
-
-    if (finalData.status === "picker" && finalData.picker) {
-      cleanData.picker = finalData.picker.map((item) => ({
-        ...item,
-        url: proxyUrl(item.url, `instagram_${item.type}_${Date.now()}.mp4`),
-        thumb: item.thumb ? proxyUrl(item.thumb, "thumbnail.jpg") : undefined,
-      }));
-    } else if ((finalData.status === "stream" || finalData.status === "redirect" || finalData.status === "tunnel") && finalData.url) {
-      // Stream/Tunnel
-      const defaultName = finalData.filename || `instagram_video_${Date.now()}.mp4`;
-      cleanData.url = proxyUrl(finalData.url, defaultName);
-      
-      // If audio mode, force title check?
-      if (mode === "audio") cleanData.filename = "audio.mp3";
-    }
-
-    return NextResponse.json(cleanData, { status: 200 });
+    // If all failed
+    return NextResponse.json(
+      { error: `Download failed. All providers exhausted. Last error: ${lastError?.message || "Unknown"}` },
+      { status: 500 }
+    );
 
   } catch (error: any) {
-    console.error("[Cobalt Manager] Critical Error:", error);
-    return NextResponse.json({ error: "Internal Server Error" }, { status: 500 });
+    console.error("[Download] Critical Error:", error);
+    return NextResponse.json(
+      { error: "Internal Server Error" },
+      { status: 500 }
+    );
   }
 }

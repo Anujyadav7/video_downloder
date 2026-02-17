@@ -1,3 +1,4 @@
+
 import InputBox from "@/components/InputBox";
 import History from "@/components/History";
 import Features from "@/components/Features";
@@ -6,48 +7,45 @@ import ToolNavigation from "@/components/ToolNavigation";
 import { Metadata } from "next";
 
 export const metadata: Metadata = {
-  title: "Instagram Photo Downloader - Save IG Images High Quality",
-  description: "Download Instagram photos, carousels, and profile pictures in full HD resolution. Free online Instagram image downloader.",
+  title: "Instagram Photo Downloader - Download Full Size Images",
+  description: "Download high-quality Instagram photos and profile pictures instantly. Free online tool for mobile and PC.",
 };
 
-export default function PhotosPage() {
+export default function PhotoPage() {
   const faqItems = [
     {
-      question: "Can I download multiple photos? (Carousel)",
-      answer: "Yes, our tool supports downloading all photos from a carousel post.",
+      question: "How to download Instagram Photos?",
+      answer: "Copy the post link, paste it into the box, and download the full-resolution image.",
     },
     {
-      question: "What quality are the photos?",
-      answer: "We download photos in the highest resolution available on Instagram.",
+      question: "Does it support carousel posts?",
+      answer: "Yes, you can download all images from a carousel post.",
     },
     {
-      question: "Can I save photos to my PC?",
-      answer: "Absolutely. You can save photos to your PC, Mac, iPhone, or Android device.",
+      question: "Is it HD?",
+      answer: "We download the highest resolution available on Instagram's servers.",
     },
   ];
 
   return (
-    <div className="flex flex-col items-center">
-      <ToolNavigation />
-      <section className="w-full bg-background pt-8 pb-20 px-4">
-        <div className="container-custom text-center">
-          <h1 className="mb-4 text-3xl md:text-4xl font-bold text-heading">
-            Instagram Photo Downloader
-          </h1>
-          <p className="text-lg text-muted mb-10 max-w-2xl mx-auto">
-             Download Instagram photos and carousels securely in high resolution.
-          </p>
+    <div className="flex flex-col items-center min-h-screen bg-background text-foreground transition-colors duration-300">
+       <ToolNavigation />
+
+      <section className="w-full pt-12 pb-20 px-4 flex flex-col items-center">
+        <div className="container-custom w-full max-w-5xl">
           <InputBox type="photo" />
-          <History />
+          <div className="mt-12">
+            <History />
+          </div>
         </div>
       </section>
+
       <Features />
+
       <section className="py-16 w-full bg-background-alt">
         <div className="container-custom">
            <div className="text-center mb-12">
-            <h2 className="text-3xl font-bold text-heading mb-4">
-              Photos FAQ
-            </h2>
+            <h2 className="text-3xl font-bold mb-4">Photo FAQ</h2>
           </div>
           <FAQ items={faqItems} />
         </div>

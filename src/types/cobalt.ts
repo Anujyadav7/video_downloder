@@ -8,6 +8,7 @@ export interface CobaltResponse {
   error?: string; // API error message
   picker?: CobaltPickerItem[];
   thumb?: string; // Sometimes returned for single videos
+  audio?: string; // Audio URL for picker responses
 }
 
 export interface CobaltPickerItem {
