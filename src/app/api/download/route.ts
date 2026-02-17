@@ -8,13 +8,10 @@ export const runtime = "edge"; // Mandatory for Cloudflare Workers/Pages
 const COBALT_INSTANCES = [
   process.env.NODE_ENV === 'development' ? "http://127.0.0.1:9000" : null,
   process.env.COBALT_API_URL, 
-  "https://api.cobalt.tools", // Official API (POST /)
-  "https://co.wuk.sh/api/json", // Wuk.sh API
-  "https://cobalt.gamestree.org/api/json", // Gamestree API
-  "https://api.cobalt.tools/api/json", // Official API Alternate
-  "https://cobalt.kwiatekmiki.com/api/json", // Kwiatekmiki API
-  "https://dl.khub.ky/api/json", // Another public instance
-  "https://cobalt.tools/api/json" // Frontend fallback
+  "https://api.cobalt.tools", 
+  "https://co.wuk.sh/api/json",
+  "https://cobalt.kwiatekmiki.com/api/json", 
+  "https://cobalt.tools/api/json"
 ].filter(Boolean) as string[];
 
 type CobaltResponse = {
@@ -31,10 +28,10 @@ type CobaltResponse = {
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
-    const { url, isAudioOnly } = body;
+    const { url, isAudioOnly } = body; // Restored
     const cleanUrl = url ? url.split("?")[0] : url;
 
-    console.log(`[Download] Processing: ${cleanUrl}`);
+    console.log(`[Download] Processing: ${url}`);
 
     // --- Primary Strategy: Cobalt (Supports IG, YT, TikTok, Twitter, Facebook) ---
     // We try multiple instances for redundancy.
@@ -42,14 +39,14 @@ export async function POST(request: NextRequest) {
 
     for (const instance of COBALT_INSTANCES) {
       try {
-        let endpoint = instance;
+        const endpoint = instance; // Use exactly as defined
         // if (!endpoint.endsWith("/")) endpoint += "/"; // Don't force slash for API paths like /api/json
 
         console.log(`[Download] Trying provider: ${endpoint}`);
 
         // Create AbortController for timeout
         const controller = new AbortController();
-        const timeoutId = setTimeout(() => controller.abort(), 8000); // 8s timeout
+        const timeoutId = setTimeout(() => controller.abort(), 15000); // Longer timeout
 
         const response = await fetch(endpoint, {
           method: "POST",
@@ -59,13 +56,8 @@ export async function POST(request: NextRequest) {
             "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
           },
           body: JSON.stringify({
-            url: cleanUrl,
-            videoQuality: "max",
-            audioFormat: "mp3",
-            filenameStyle: "basic",
-            downloadMode: isAudioOnly ? "audio" : "auto",
-            youtubeVideoCodec: "h264",
-            alwaysProxy: true // Request proxying to bypass geo-restrictions
+             url: url,
+             ...(isAudioOnly ? { isAudioOnly: true } : {})
           }),
           signal: controller.signal
         });

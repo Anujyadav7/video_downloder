@@ -18,69 +18,30 @@ interface InputBoxProps {
 }
 
 const getModeDetails = (url: string, type: string) => {
+    // Default to Instagram Styling
     let details = {
-        title: "Smart Video Downloader",
-        tag: "Universal Saver",
-        icon: LinkIcon,
-        color: "text-zinc-700 dark:text-zinc-300",
-        bg: "bg-zinc-100 dark:bg-zinc-800/50",
-        border: "border-zinc-200 dark:border-zinc-700"
+        title: "Instagram Reel Downloader",
+        tag: "Reels & Posts",
+        icon: Instagram,
+        color: "text-pink-600 dark:text-pink-400",
+        bg: "bg-pink-50 dark:bg-pink-900/10",
+        border: "border-pink-100 dark:border-pink-800/30"
     };
 
     if (type === 'script') {
-        details.title = "Video Link to AI Script";
+        details.title = "Reel to AI Script";
         details.tag = "AI Transcription";
         details.icon = Sparkles;
         details.color = "text-violet-600 dark:text-violet-400";
         details.bg = "bg-violet-50 dark:bg-violet-900/10";
         details.border = "border-violet-100 dark:border-violet-800/30";
-    } else if (type === 'photo') {
-        details.title = "Instagram Photo Downloader";
-        details.tag = "HD Images";
-        details.icon = ImageIcon;
-        details.color = "text-pink-600 dark:text-pink-400";
-        details.bg = "bg-pink-50 dark:bg-pink-900/10";
-        details.border = "border-pink-100 dark:border-pink-800/30";
-    }
-
-    if (url) {
-        if (url.includes("youtube.com") || url.includes("youtu.be")) {
-             details.tag = "YouTube";
-             details.icon = Youtube;
-             details.color = "text-red-600 dark:text-red-400";
-             details.bg = "bg-red-50 dark:bg-red-900/10";
-             details.border = "border-red-100 dark:border-red-800/30";
-        } else if (url.includes("instagram.com")) {
-             details.tag = "Instagram";
-             details.icon = Instagram;
-             details.color = "text-pink-600 dark:text-pink-400";
-             details.bg = "bg-pink-50 dark:bg-pink-900/10";
-             details.border = "border-pink-100 dark:border-pink-800/30";
-        } else if (url.includes("facebook.com") || url.includes("fb.watch")) {
-             details.tag = "Facebook";
-             details.icon = Facebook;
-             details.color = "text-blue-600 dark:text-blue-400";
-             details.bg = "bg-blue-50 dark:bg-blue-900/10";
-             details.border = "border-blue-100 dark:border-blue-800/30";
-        } else if (url.includes("twitter.com") || url.includes("x.com")) {
-             details.tag = "Twitter";
-             details.icon = Twitter;
-             details.color = "text-black dark:text-white"; 
-             details.bg = "bg-zinc-100 dark:bg-zinc-800";
-             details.border = "border-zinc-200 dark:border-zinc-700";
-        } else if (url.includes("tiktok.com")) {
-             details.tag = "TikTok";
-             details.icon = Video;
-             details.color = "text-pink-500 dark:text-pink-400";
-             details.bg = "bg-zinc-50 dark:bg-zinc-900";
-             details.border = "border-zinc-200 dark:border-zinc-700";
-        }
     }
 
     return details;
 };
 
 export default function InputBox({ onDownload, type = "video" }: InputBoxProps) {
+  // ... (State declarations remain same)
   const [url, setUrl] = useState("");
   const [loading, setLoading] = useState(false);
   const [loadingProgress, setLoadingProgress] = useState(0); 
@@ -125,12 +86,12 @@ export default function InputBox({ onDownload, type = "video" }: InputBoxProps) 
     return () => window.removeEventListener('restore_download', handleRestore);
   }, []);
 
+  // handleDownload with Instagram validation
   const addToHistory = (item: DownloadResult) => {
+      // ... (Implementation same as before) ...
     try {
         const stored = localStorage.getItem("download_history");
         const historyList = stored ? JSON.parse(stored) : [];
-        
-        // Check for duplicates
         if (!historyList.some((h: any) => h.url === item.url)) {
             const newItem = {
                 url: item.url,
@@ -139,17 +100,15 @@ export default function InputBox({ onDownload, type = "video" }: InputBoxProps) 
                 type: item.type,
                 timestamp: Date.now(),
                 downloadUrl: item.downloadUrl,
-                rawMediaUrl: item.rawMediaUrl, // Crucial for restore
+                rawMediaUrl: item.rawMediaUrl,
                 picker: item.picker ? item.picker.map((p: any) => ({ url: p.url, type: p.type })) : undefined,
                 isAudio: item.isAudio
             };
-            const updated = [newItem, ...historyList].slice(0, 5); // Limit to 5 items
+            const updated = [newItem, ...historyList].slice(0, 5); 
             localStorage.setItem("download_history", JSON.stringify(updated));
             window.dispatchEvent(new Event('history_updated'));
         }
-    } catch (e) {
-        console.error("Failed to add to history", e);
-    }
+    } catch (e) { console.error(e); }
   };
 
   const handleDownload = async (e: React.FormEvent, reqMode: "auto" | "audio" = "auto") => {
@@ -159,6 +118,14 @@ export default function InputBox({ onDownload, type = "video" }: InputBoxProps) 
     setVideoSrc("");
 
     if (!url) { setError("Please paste a valid video URL"); return; }
+    
+    // Enforce Instagram Only
+    if (!url.includes("instagram.com") && !url.includes("instagr.am")) { 
+        setError("Only Instagram links are supported!"); 
+        setLoading(false);
+        return; 
+    }
+
     try { new URL(url); } catch { setError("Invalid URL format"); return; }
 
     setLoading(true);
@@ -339,15 +306,14 @@ export default function InputBox({ onDownload, type = "video" }: InputBoxProps) 
           </h1>
           
           <p className="text-neutral-500 dark:text-neutral-400 mt-3 text-lg font-medium max-w-xl mx-auto opacity-80">
-             {type === 'script' ? 'Professional AI Transcription for Videos.' : 
-              type === 'photo' ? 'Download HD Photos Instantly.' :
-              'Download High-Quality Videos from All Major Platforms.'}
+             {type === 'script' ? 'Generate clean Hinglish scripts from Reels.' : 
+              'Download High-Quality Reels, Videos & Photos from Instagram.'}
           </p>
       </div>
 
       {/* Input Field */}
       <div className={`relative group transition-all duration-300 z-10 ${showScript ? 'opacity-0 h-0 overflow-hidden pointer-events-none' : 'opacity-100 scale-100'}`}>
-        <div className={`absolute -inset-0.5 rounded-[2rem] bg-gradient-to-r from-neutral-200 to-neutral-200 opacity-0 blur-2xl transition duration-1000 group-hover:opacity-50 dark:from-neutral-800 dark:to-neutral-900`}></div>
+        <div className={`absolute -inset-0.5 rounded-[2rem] bg-gradient-to-r from-purple-500 to-pink-500 opacity-0 blur-2xl transition duration-1000 group-hover:opacity-30 dark:from-purple-900 dark:to-pink-900`}></div>
         
         <div className="relative bg-white p-2 shadow-xl border ring-1 ring-black/5 border-neutral-100 rounded-[2rem] dark:bg-neutral-900 dark:border-neutral-800 dark:ring-white/5 transition-all">
             <form onSubmit={handleDownload} className="relative flex items-center">
@@ -358,7 +324,7 @@ export default function InputBox({ onDownload, type = "video" }: InputBoxProps) 
                     type="text"
                     value={url}
                     onChange={(e) => setUrl(e.target.value)}
-                    placeholder={type === 'script' ? 'Paste video URL to transcribe...' : 'Paste video or photo URL...'}
+                    placeholder={type === 'script' ? 'Paste Reel URL to transcribe...' : 'Paste Instagram Reel or Post link...'}
                     className="w-full flex-1 py-4 pl-14 pr-36 bg-transparent text-lg font-medium outline-none placeholder:text-neutral-400 min-w-0 truncate text-neutral-900 dark:text-neutral-100"
                 />
                 <button

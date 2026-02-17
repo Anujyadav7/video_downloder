@@ -11,9 +11,9 @@ import { Film, Image as ImageIcon, Sparkles } from "lucide-react";
  */
 
 const tools = [
-  { name: "Video", href: "/", icon: Film },
-  { name: "Script", href: "/script", icon: Sparkles },
-  { name: "Photo", href: "/photos", icon: ImageIcon },
+  { name: "Reels", href: "/", icon: Film },
+  { name: "AI Script", href: "/script", icon: Sparkles },
+  { name: "Photos", href: "/photos", icon: ImageIcon },
 ];
 
 export default function ToolNavigation() {

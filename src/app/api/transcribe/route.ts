@@ -6,21 +6,17 @@ export const maxDuration = 30; // 30s max duration
 // --- Configuration ---
 const GROQ_API_URL = "https://api.groq.com/openai/v1/audio/transcriptions";
 const COBALT_INSTANCES = [
+  process.env.NODE_ENV === 'development' ? "http://127.0.0.1:9000" : null,
   process.env.COBALT_API_URL,
-  "https://api.cobalt.tools", // Official API (POST /)
-  "https://co.wuk.sh/api/json", // Wuk.sh API
-  "https://cobalt.gamestree.org/api/json", // Gamestree API
-  "https://api.cobalt.tools/api/json", // Official API Alternate
-  "https://cobalt.kwiatekmiki.com/api/json", // Kwiatekmiki API
-  "https://dl.khub.ky/api/json", // Another public instance
-  "https://cobalt.tools/api/json" // Frontend fallback
+  "https://api.cobalt.tools", 
+  "https://co.wuk.sh/api/json",
+  "https://cobalt.kwiatekmiki.com/api/json", 
+  "https://cobalt.tools/api/json"
 ].filter(Boolean) as string[];
 
 // --- Helper Functions ---
 async function fetchAudioBuffer(url: string): Promise<ArrayBuffer> {
-  const response = await fetch(url, {
-      headers: { "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)" }
-  });
+  const response = await fetch(url); // Simple fetch
   if (!response.ok) throw new Error(`Failed to fetch audio: ${response.status}`);
   return await response.arrayBuffer();
 }
@@ -33,74 +29,78 @@ export async function POST(request: NextRequest) {
 
     console.log(`[Transcribe] Processing: ${url}`);
 
-    // 1. Get Audio URL via Cobalt (Extraction)
-    let audioUrl: string | null = null;
+
+    // 1. Get Media URL via Cobalt
+    // Strategy: Try to get Audio first. If fails, get Video and let Groq extract audio.
+    let mediaUrl: string | null = null;
+    let isVideo = false;
 
     for (const instance of COBALT_INSTANCES) {
       try {
-        let endpoint = instance;
-        // let endpoint = instance.endsWith("/") ? instance : `${instance}/`;
+        const endpoint = instance;
+        console.log(`[Transcribe] Requesting media via ${endpoint}`);
         
-        console.log(`[Transcribe] Extracting audio via ${endpoint}`);
-        
+        // Request "auto" mode (Video/Audio) to ensure we get SOMETHING
         const response = await fetch(endpoint, {
           method: "POST",
           headers: { 
             "Accept": "application/json", 
-            "Content-Type": "application/json",
-            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+            "Content-Type": "application/json"
           },
           body: JSON.stringify({
             url: url,
-            downloadMode: "audio",
-            audioFormat: "mp3", 
+            videoQuality: "144", // Request lowest quality video to save bandwidth/size
             filenameStyle: "basic"
           })
         });
 
         const data: any = await response.json();
-        
+        console.log(`[Transcribe] Response from ${instance}: status=${data.status}, url=${data.url ? 'yes' : 'no'}`);
+
         if (data.url || data.audio) {
-            audioUrl = data.url || data.audio;
+            mediaUrl = data.url || data.audio;
+            // Guess type based on extension or explicit audio field
+            if (data.audio) isVideo = false;
+            else if (mediaUrl?.includes('.mp4')) isVideo = true;
+            
+            console.log(`[Transcribe] Successfully extracted URL: ${mediaUrl} (Is Video: ${isVideo})`);
             break; 
         }
-      } catch (e) {
-        console.warn(`[Transcribe] Extraction failed on ${instance}`, e);
+      } catch (e: any) {
+        console.warn(`[Transcribe] Extraction failed on ${instance}`, e.message);
       }
     }
 
-    if (!audioUrl) {
-      return NextResponse.json({ error: "Could not extract audio from video. Try another link." }, { status: 422 });
+    if (!mediaUrl) {
+      return NextResponse.json({ error: "Could not extract media (video/audio) from link." }, { status: 422 });
     }
 
-    // 2. Download Audio Stream (In-Memory Buffer)
-    // Note: Edge Workers have memory limits. Large files may fail.
-    const audioBuffer = await fetchAudioBuffer(audioUrl);
+    // 2. Download Stream (In-Memory Buffer)
+    const mediaBuffer = await fetchAudioBuffer(mediaUrl);
     
-    // 3. Send to Groq API (Direct Fetch, No SDK)
+    // 3. Send to Groq API
     const formData = new FormData();
-    // Create a Blob from buffer to simulate file upload
-    const audioBlob = new Blob([audioBuffer], { type: "audio/mp3" });
-    formData.append("file", audioBlob, "audio.mp3");
+    // Name it video.mp4 if video, or audio.mp3
+    const filename = isVideo ? "video.mp4" : "audio.mp3";
+    const mimeType = isVideo ? "video/mp4" : "audio/mp3";
+    
+    const mediaBlob = new Blob([mediaBuffer], { type: mimeType });
+    formData.append("file", mediaBlob, filename);
     formData.append("model", "whisper-large-v3");
-    formData.append("language", "en"); // Transliteration hint
+    formData.append("language", "en"); 
     formData.append("temperature", "0");
     formData.append("response_format", "json");
     
-    // Strict Hinglish Prompt
-    formData.append("prompt", `RULE: TRANSLITERATE ONLY. NO TRANSLATION.
-Write EXACTLY what you hear in Roman letters.
+    // Strict Hinglish Prompt for Whisper
+    // Whisper uses prompt as "previous context". Providing Hinglish examples forces the style.
+    const hinglishPrompt = `Hinglish Transcript:
+    Namaste dosto, swagat hai aapka. Aaj hum baat karenge ek naye topic ke baare mein.
+    Bilkul exact words likhna hai. Translation nahi karna hai.
+    Agar koi English word bole toh English mein likho, aur Hindi bole toh Roman Hindi mein.
+    Common words: aap, hum, kaise, theek, bhai, video, like, share, subscribe.
+    DO NOT TRANSLATE. WRITE EXACTLY WHAT YOU HEAR.`;
 
-FORBIDDEN:
-❌ Translation (aapko≠you, hai≠is)
-❌ Devanagari
-❌ Grammar fixes
-
-MANDATORY:
-✓ Hindi words in Roman script (aapko, chahiye, mein, hai)
-✓ English words as-is
-
-OUTPUT: Sounds only. Zero translation!`);
+    formData.append("prompt", hinglishPrompt);
 
     const groqKey = process.env.GROQ_API_KEY;
     if (!groqKey) throw new Error("GROQ_API_KEY is missing in env vars");

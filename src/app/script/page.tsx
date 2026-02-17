@@ -7,15 +7,15 @@ import ToolNavigation from "@/components/ToolNavigation";
 import { Metadata } from "next";
 
 export const metadata: Metadata = {
-  title: "AI Video Script Generator - YouTube, Reels & TikTok to Text",
-  description: "Convert video to text instantly. Extract scripts from YouTube Shorts, Instagram Reels, and TikTok videos in Romanized Hinglish. Free AI transcription tool.",
+  title: "Instagram Reel Script Generator - AI Transcription for Reels",
+  description: "Convert Instagram Reels to text instantly. Extract scripts from any Reel in Romanized Hinglish. Free AI transcription tool.",
 };
 
 export default function ScriptPage() {
   const faqItems = [
     {
       question: "How does the AI Script Generator work?",
-      answer: "Paste a video link, click 'Get Script', and our AI listens to the audio to generate a word-for-word transcript in Hinglish.",
+      answer: "Paste an Instagram Reel link, click 'Get Script', and our AI listens to the audio to generate a word-for-word transcript in Hinglish.",
     },
     {
       question: "Which languages are supported?",
