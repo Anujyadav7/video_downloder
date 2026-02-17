@@ -94,6 +94,7 @@ export default function InputBox({ onDownload, type = "video" }: InputBoxProps) 
   
   // Video Source Logic (Proxy vs Direct)
   const [videoSrc, setVideoSrc] = useState("");
+  const [originalMediaUrl, setOriginalMediaUrl] = useState(""); // Store original URL for fallback
 
   const mode = getModeDetails(url, type);
   const ModeIcon = mode.icon;
@@ -160,7 +161,9 @@ export default function InputBox({ onDownload, type = "video" }: InputBoxProps) 
       const initialSrc = downloadUrl ? (isInternal ? downloadUrl : `/api/proxy?url=${encodeURIComponent(downloadUrl)}`) : "";
       
       setVideoSrc(initialSrc);
+      setOriginalMediaUrl(downloadUrl || ""); // Store original for fallback
       console.log("Setting initial video src:", initialSrc);
+      console.log("Original media URL:", downloadUrl);
 
       // Detect actual content type from the media URL, not just filename
       const filename = data.filename || 'Content';
@@ -228,6 +231,14 @@ export default function InputBox({ onDownload, type = "video" }: InputBoxProps) 
         });
       }, 500);
 
+      // Add timeout to prevent infinite waiting
+      const timeout = setTimeout(() => {
+          clearInterval(interval);
+          setTranscribing(false);
+          setTranscribeProgress(0);
+          setError("Transcription timeout. Please try again.");
+      }, 35000); // 35 second timeout (API has 30s max)
+
       try {
           // Robust Transcription Strategy: Server-Side Fetch
           // Instead of downloading the Blob in browser (slow, CORS issues), 
@@ -258,6 +269,7 @@ export default function InputBox({ onDownload, type = "video" }: InputBoxProps) 
           setTranscribeProgress(0);
           setError(err.message);
       } finally {
+          clearTimeout(timeout);
           clearInterval(interval);
           setTranscribing(false);
       }
@@ -289,8 +301,11 @@ export default function InputBox({ onDownload, type = "video" }: InputBoxProps) 
   const handleVideoError = () => {
       // If Proxy Fails, try Direct URL fallback
       console.log("Video Proxy failed to load. Falling back to direct URL.");
-      if (result?.downloadUrl && videoSrc.includes("/api/proxy")) {
-          setVideoSrc(result.downloadUrl);
+      if (originalMediaUrl && videoSrc.includes("/api/proxy")) {
+          console.log("Switching to direct URL:", originalMediaUrl);
+          setVideoSrc(originalMediaUrl);
+      } else {
+          console.warn("No fallback URL available or already using direct URL");
       }
   };
 
