@@ -219,9 +219,8 @@ export default function InputBox({ onDownload, type = "video" }: InputBoxProps) 
                     "Content-Type": "application/json"
                 },
                 body: JSON.stringify({
-                    url: url,
-                    filenameStyle: "basic",
-                    // Use minimal body to reduce CORS/preflight issues
+                    url: url
+                    // Sending ONLY url to bypass "Auth Required" for custom features
                 })
             });
             const data = await res.json();
