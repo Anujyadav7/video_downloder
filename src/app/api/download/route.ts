@@ -9,9 +9,8 @@ const COBALT_INSTANCES = [
   process.env.NODE_ENV === 'development' ? "http://127.0.0.1:9000" : null,
   process.env.COBALT_API_URL, 
   "https://api.cobalt.tools", 
-  "https://cobalt-api.kwiatek.xyz",
-  "https://co.wuk.sh",
-  "https://cobalt.kwiatekmiki.com"
+  "https://cobalt.tools/api/json",
+  "https://cobalt.kwiatekmiki.com/api/json"
 ].filter(Boolean) as string[];
 
 type CobaltResponse = {
@@ -53,9 +52,7 @@ export async function POST(request: NextRequest) {
           headers: {
             "Accept": "application/json",
             "Content-Type": "application/json",
-            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
-            "Origin": "https://cobalt.tools",
-            "Referer": "https://cobalt.tools/"
+            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
           },
           body: JSON.stringify({
              url: url,

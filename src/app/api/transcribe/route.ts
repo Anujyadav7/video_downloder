@@ -9,9 +9,8 @@ const COBALT_INSTANCES = [
   process.env.NODE_ENV === 'development' ? "http://127.0.0.1:9000" : null,
   process.env.COBALT_API_URL,
   "https://api.cobalt.tools", 
-  "https://cobalt-api.kwiatek.xyz",
-  "https://co.wuk.sh",
-  "https://cobalt.kwiatekmiki.com"
+  "https://cobalt.tools/api/json",
+  "https://cobalt.kwiatekmiki.com/api/json"
 ].filter(Boolean) as string[];
 
 // --- Helper Functions ---
