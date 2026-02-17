@@ -40,7 +40,7 @@ export async function POST(request: NextRequest) {
     for (const instance of COBALT_INSTANCES) {
       try {
         let endpoint = instance;
-        if (!endpoint.endsWith("/")) endpoint += "/";
+        // if (!endpoint.endsWith("/")) endpoint += "/"; // Don't force slash for API paths like /api/json
 
         console.log(`[Download] Trying provider: ${endpoint}`);
 

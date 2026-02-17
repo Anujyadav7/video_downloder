@@ -35,7 +35,8 @@ export async function POST(request: NextRequest) {
 
     for (const instance of COBALT_INSTANCES) {
       try {
-        let endpoint = instance.endsWith("/") ? instance : `${instance}/`;
+        let endpoint = instance;
+        // let endpoint = instance.endsWith("/") ? instance : `${instance}/`;
         
         console.log(`[Transcribe] Extracting audio via ${endpoint}`);
         
