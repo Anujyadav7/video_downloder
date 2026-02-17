@@ -8,9 +8,10 @@ export const runtime = "edge"; // Mandatory for Cloudflare Workers/Pages
 const COBALT_INSTANCES = [
   process.env.NODE_ENV === 'development' ? "http://127.0.0.1:9000" : null,
   process.env.COBALT_API_URL, 
-  "https://cobalt.kwiatekmiki.com/api/json",
-  "https://co.wuk.sh/api/json",
-  "https://api.cobalt.tools" // Official instance as last resort
+  "https://api.cobalt.tools", 
+  "https://cobalt-api.kwiatek.xyz",
+  "https://co.wuk.sh",
+  "https://cobalt.kwiatekmiki.com"
 ].filter(Boolean) as string[];
 
 type CobaltResponse = {

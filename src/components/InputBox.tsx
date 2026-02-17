@@ -112,13 +112,12 @@ export default function InputBox({ onDownload, type = "video" }: InputBoxProps) 
   };
 
   // Client-Side Fallback Instances
-  // Using ONLY robust community mirrors to avoid Auth/Block issues
-  // But added official instances as last resort for Browser-based fetch (might work)
+  // Web-friendly mirrors that usually allow CORS
   const FALLBACK_INSTANCES = [
-    "https://cobalt.kwiatekmiki.com/api/json",
-    "https://co.wuk.sh/api/json",
+    "https://cobalt-api.kwiatek.xyz",
     "https://api.cobalt.tools",
-    "https://cobalt.tools/api/json"
+    "https://co.wuk.sh",
+    "https://cobalt.kwiatekmiki.com"
   ];
 
   const handleDownload = async (e: React.FormEvent, reqMode: "auto" | "audio" = "auto") => {
