@@ -112,8 +112,9 @@ export default function InputBox({ onDownload, type = "video" }: InputBoxProps) 
   };
 
   // Client-Side Fallback Instances
-  // Verified Cobalt v10 mirrors for browser-direct fetch
+  // Private Server + Verified mirrors
   const FALLBACK_INSTANCES = [
+    "https://cobalt-server.infoanuj74.workers.dev/",
     "https://api.cobalt.tools/",
     "https://co.wuk.sh/",
     "https://sh.cobalt.tools/"

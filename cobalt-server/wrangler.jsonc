@@ -1,0 +1,26 @@
+{
+  "name": "cobalt-server",
+  "main": "src/index.ts",
+  "compatibility_date": "2025-10-01",
+  "durable_objects": {
+    "bindings": [
+      {
+        "name": "cobalt_service",
+        "class_name": "CobaltContainer"
+      }
+    ]
+  },
+  "containers": [
+    {
+      "name": "cobalt_image",
+      "class_name": "CobaltContainer",
+      "image": "./Dockerfile"
+    }
+  ],
+  "migrations": [
+    {
+      "tag": "v1",
+      "new_sqlite_classes": ["CobaltContainer"]
+    }
+  ]
+}

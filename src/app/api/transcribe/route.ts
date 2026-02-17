@@ -7,6 +7,7 @@ export const maxDuration = 30; // 30s max duration
 const GROQ_API_URL = "https://api.groq.com/openai/v1/audio/transcriptions";
 const COBALT_INSTANCES = [
   process.env.NODE_ENV === 'development' ? "http://127.0.0.1:9000/" : null,
+  "https://cobalt-server.infoanuj74.workers.dev/", // Private Cloudflare Server
   process.env.COBALT_API_URL,
   "https://api.cobalt.tools/", 
   "https://co.wuk.sh/",
