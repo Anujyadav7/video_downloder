@@ -6,11 +6,12 @@ export const maxDuration = 30; // 30s max duration
 // --- Configuration ---
 const GROQ_API_URL = "https://api.groq.com/openai/v1/audio/transcriptions";
 const COBALT_INSTANCES = [
-  "http://127.0.0.1:9000",
+  process.env.NODE_ENV === 'development' ? "http://127.0.0.1:9000" : null,
   "https://api.cobalt.tools",
   "https://cobalt.kwiatekmiki.com",
-  "https://co.wuk.sh"
-];
+  "https://co.wuk.sh",
+  "https://cobalt.tools"
+].filter(Boolean) as string[];
 
 // --- Helper Functions ---
 async function fetchAudioBuffer(url: string): Promise<ArrayBuffer> {
@@ -40,7 +41,11 @@ export async function POST(request: NextRequest) {
         
         const response = await fetch(endpoint, {
           method: "POST",
-          headers: { "Accept": "application/json", "Content-Type": "application/json" },
+          headers: { 
+            "Accept": "application/json", 
+            "Content-Type": "application/json",
+            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+          },
           body: JSON.stringify({
             url: url,
             downloadMode: "audio",
