@@ -115,8 +115,8 @@ export default function InputBox({ onDownload, type = "video" }: InputBoxProps) 
   // Verified Cobalt v10 mirrors for browser-direct fetch
   const FALLBACK_INSTANCES = [
     "https://api.cobalt.tools/",
-    "https://sh.cobalt.tools/",
-    "https://idk.cobalt.tools/"
+    "https://co.wuk.sh/",
+    "https://sh.cobalt.tools/"
   ];
 
   const handleDownload = async (e: React.FormEvent, reqMode: "auto" | "audio" = "auto") => {
@@ -220,8 +220,7 @@ export default function InputBox({ onDownload, type = "video" }: InputBoxProps) 
                     "Content-Type": "application/json"
                 },
                 body: JSON.stringify({
-                    url: url,
-                    videoQuality: "1080"
+                    url: url
                 })
             });
             const data = await res.json();
