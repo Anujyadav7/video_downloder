@@ -112,10 +112,11 @@ export default function InputBox({ onDownload, type = "video" }: InputBoxProps) 
   };
 
   // Client-Side Fallback Instances
+  // Prioritize instances less likely to block or require auth
   const FALLBACK_INSTANCES = [
-    "https://api.cobalt.tools", 
+    "https://cobalt.kwiatekmiki.com/api/json",
     "https://co.wuk.sh/api/json",
-    "https://cobalt.kwiatekmiki.com/api/json", 
+    "https://api.cobalt.tools", 
     "https://cobalt.tools/api/json"
   ];
 
