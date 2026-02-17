@@ -191,26 +191,19 @@ export default function InputBox({ onDownload, type = "video" }: InputBoxProps) 
       };
 
       setResult(newResult);
-      
-      // Save to History
+      setLoadingProgress(100);
+
+      // Save to History using localStorage
       try {
-          const historyItem = {
-              ...newResult,
-              timestamp: Date.now()
-          };
+          const historyItem = { ...newResult, timestamp: Date.now() };
           const existing = localStorage.getItem("download_history");
           const history = existing ? JSON.parse(existing) : [];
-          // Avoid duplicates (optional, based on URL)
-          const filtered = history.filter((h: any) => h.url !== url);
-          const updated = [historyItem, ...filtered].slice(0, 50);
-          
-          localStorage.setItem("download_history", JSON.stringify(updated));
-          window.dispatchEvent(new Event("history_updated"));
+          // Add to top, remove duplicates by original URL, limit to 20
+          const newHistory = [historyItem, ...history.filter((h: any) => h.url !== url)].slice(0, 20);
+          localStorage.setItem("download_history", JSON.stringify(newHistory));
       } catch (e) {
-          console.error("History Save Error:", e);
+          console.error("Failed to save history", e);
       }
-
-      setLoadingProgress(100);
 
       if (type === "script") {
           startTranscription(downloadUrl || "");
