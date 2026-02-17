@@ -11,6 +11,7 @@ interface HistoryItem {
   thumbnail?: string | null;
   title?: string;
   downloadUrl?: string;
+  rawMediaUrl?: string; // Stored for proper restoring
   picker?: Array<{ url: string; type: string }>;
   isAudio?: boolean;
 }
@@ -18,19 +19,29 @@ interface HistoryItem {
 export default function History() {
   const [history, setHistory] = useState<HistoryItem[]>([]);
 
+  const loadHistory = () => {
+      try {
+          const stored = localStorage.getItem("download_history");
+          if (stored) {
+              setHistory(JSON.parse(stored));
+          }
+      } catch (e) {
+          console.error("Failed to parse history", e);
+      }
+  };
+
   useEffect(() => {
-    // Defer reading localStorage to avoid hydration mismatch/synchronous render issues
-    const timer = setTimeout(() => {
-        const stored = localStorage.getItem("download_history");
-        if (stored) {
-            try {
-                setHistory(JSON.parse(stored));
-            } catch (e) {
-                console.error("Failed to parse history", e);
-            }
-        }    
-    }, 0);
-    return () => clearTimeout(timer);
+    // Initial load deferred
+    const timer = setTimeout(loadHistory, 0);
+    
+    // Listen for updates from InputBox
+    const handleUpdate = () => loadHistory();
+    window.addEventListener('history_updated', handleUpdate);
+    
+    return () => {
+        clearTimeout(timer);
+        window.removeEventListener('history_updated', handleUpdate);
+    };
   }, []);
 
   const clearHistory = () => {

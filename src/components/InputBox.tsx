@@ -191,6 +191,25 @@ export default function InputBox({ onDownload, type = "video" }: InputBoxProps) 
       };
 
       setResult(newResult);
+      
+      // Save to History
+      try {
+          const historyItem = {
+              ...newResult,
+              timestamp: Date.now()
+          };
+          const existing = JSON.parse(localStorage.getItem("download_history") || "[]");
+          // Remove duplicates
+          const filtered = existing.filter((i: any) => i.url !== url);
+          const updated = [historyItem, ...filtered].slice(0, 10); // Keep last 10
+          localStorage.setItem("download_history", JSON.stringify(updated));
+          
+          // Notify History Component
+          window.dispatchEvent(new Event("history_updated"));
+      } catch (e) {
+          console.error("Failed to save history", e);
+      }
+
       setLoadingProgress(100);
 
       if (type === "script") {

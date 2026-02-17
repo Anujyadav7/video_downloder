@@ -6,7 +6,7 @@ export const runtime = "edge"; // Mandatory for Cloudflare Workers/Pages
 // Note: In Cloudflare Workers, process.env is replaced by global env variables
 // However, Next.js Edge Runtime handles process.env correctly via build-time inlining or runtime binding.
 const COBALT_INSTANCES = [
-  process.env.NODE_ENV === 'development' ? "http://127.0.0.1:9000" : null,
+  // process.env.NODE_ENV === 'development' ? "http://127.0.0.1:9000" : null, // Disabled to prevent broken local tunnel URLs
   process.env.COBALT_API_URL, 
   "https://api.cobalt.tools", // Official API (POST /)
   "https://co.wuk.sh/api/json", // Wuk.sh API (POST /api/json required)
