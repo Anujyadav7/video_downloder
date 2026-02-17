@@ -8,10 +8,10 @@ export const runtime = "edge"; // Mandatory for Cloudflare Workers/Pages
 const COBALT_INSTANCES = [
   process.env.NODE_ENV === 'development' ? "http://127.0.0.1:9000" : null,
   process.env.COBALT_API_URL, 
-  "https://api.cobalt.tools",
-  "https://cobalt.kwiatekmiki.com",
-  "https://co.wuk.sh",
-  "https://cobalt.tools" // Logic: primary domain sometimes works if api subdomain fails
+  "https://api.cobalt.tools", // Official API (POST /)
+  "https://co.wuk.sh/api/json", // Wuk.sh API (POST /api/json required)
+  "https://cobalt.kwiatekmiki.com", // Try root, might fail if needs /api/json
+  "https://cobalt.tools/api/json" // Frontend path variant
 ].filter(Boolean) as string[];
 
 type CobaltResponse = {

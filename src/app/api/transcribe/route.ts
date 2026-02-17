@@ -7,10 +7,10 @@ export const maxDuration = 30; // 30s max duration
 const GROQ_API_URL = "https://api.groq.com/openai/v1/audio/transcriptions";
 const COBALT_INSTANCES = [
   process.env.NODE_ENV === 'development' ? "http://127.0.0.1:9000" : null,
-  "https://api.cobalt.tools",
+  "https://api.cobalt.tools", // POST / works
+  "https://co.wuk.sh/api/json", // POST /api/json works
   "https://cobalt.kwiatekmiki.com",
-  "https://co.wuk.sh",
-  "https://cobalt.tools"
+  "https://cobalt.tools/api/json"
 ].filter(Boolean) as string[];
 
 // --- Helper Functions ---
