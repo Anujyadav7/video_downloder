@@ -112,11 +112,11 @@ export default function InputBox({ onDownload, type = "video" }: InputBoxProps) 
   };
 
   // Client-Side Fallback Instances
-  // Web-friendly mirrors using explicit API paths
+  // Verified Cobalt v10 mirrors for browser-direct fetch
   const FALLBACK_INSTANCES = [
-    "https://api.cobalt.tools",
-    "https://cobalt.tools/api/json",
-    "https://cobalt.kwiatekmiki.com/api/json"
+    "https://api.cobalt.tools/",
+    "https://sh.cobalt.tools/",
+    "https://idk.cobalt.tools/"
   ];
 
   const handleDownload = async (e: React.FormEvent, reqMode: "auto" | "audio" = "auto") => {
@@ -213,13 +213,15 @@ export default function InputBox({ onDownload, type = "video" }: InputBoxProps) 
             console.log(`Trying Client-Side: ${instance}`);
             const res = await fetch(instance, {
                 method: "POST",
+                mode: 'cors',
+                credentials: 'omit',
                 headers: { 
                     "Accept": "application/json",
                     "Content-Type": "application/json"
                 },
                 body: JSON.stringify({
-                    url: url
-                    // Sending ONLY url to bypass "Auth Required" for custom features
+                    url: url,
+                    videoQuality: "1080"
                 })
             });
             const data = await res.json();

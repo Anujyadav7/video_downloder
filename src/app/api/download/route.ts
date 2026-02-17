@@ -9,8 +9,8 @@ const COBALT_INSTANCES = [
   process.env.NODE_ENV === 'development' ? "http://127.0.0.1:9000" : null,
   process.env.COBALT_API_URL, 
   "https://api.cobalt.tools", 
-  "https://cobalt.tools/api/json",
-  "https://cobalt.kwiatekmiki.com/api/json"
+  "https://sh.cobalt.tools",
+  "https://idk.cobalt.tools"
 ].filter(Boolean) as string[];
 
 type CobaltResponse = {
@@ -27,35 +27,31 @@ type CobaltResponse = {
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
-    const { url, isAudioOnly } = body; // Restored
-    const cleanUrl = url ? url.split("?")[0] : url;
-
+    const { url, isAudioOnly } = body;
+    
+    // DO NOT strip query params for IG - Cobalt v10 needs them for certain URL types
     console.log(`[Download] Processing: ${url}`);
 
-    // --- Primary Strategy: Cobalt (Supports IG, YT, TikTok, Twitter, Facebook) ---
-    // We try multiple instances for redundancy.
     let lastError = null;
 
     for (const instance of COBALT_INSTANCES) {
       try {
-        const endpoint = instance; // Use exactly as defined
-        // if (!endpoint.endsWith("/")) endpoint += "/"; // Don't force slash for API paths like /api/json
-
+        const endpoint = instance.endsWith('/') ? instance : `${instance}/`;
         console.log(`[Download] Trying provider: ${endpoint}`);
 
-        // Create AbortController for timeout
         const controller = new AbortController();
-        const timeoutId = setTimeout(() => controller.abort(), 15000); // Longer timeout
+        const timeoutId = setTimeout(() => controller.abort(), 12000);
 
         const response = await fetch(endpoint, {
           method: "POST",
           headers: {
             "Accept": "application/json",
             "Content-Type": "application/json",
-            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36"
           },
           body: JSON.stringify({
              url: url,
+             videoQuality: "1080", // Explicit quality for v10
              ...(isAudioOnly ? { isAudioOnly: true } : {})
           }),
           signal: controller.signal
