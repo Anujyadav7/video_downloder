@@ -8,10 +8,10 @@ const GROQ_API_URL = "https://api.groq.com/openai/v1/audio/transcriptions";
 const COBALT_INSTANCES = [
   process.env.NODE_ENV === 'development' ? "http://127.0.0.1:9000" : null,
   process.env.COBALT_API_URL,
-  "https://api.cobalt.tools", 
+  "https://cobalt.kwiatekmiki.com/api/json",
   "https://co.wuk.sh/api/json",
-  "https://cobalt.kwiatekmiki.com/api/json", 
-  "https://cobalt.tools/api/json"
+  "https://cobalt.tools/api/json",
+  "https://api.cobalt.tools" // Strict auth, keep last
 ].filter(Boolean) as string[];
 
 // --- Helper Functions ---
