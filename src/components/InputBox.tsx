@@ -224,14 +224,26 @@ export default function InputBox({ onDownload, type = "video" }: InputBoxProps) 
                     url: url
                 })
             });
+
+            // SAFETY CHECK: Cloudflare often returns HTML 530/1003/403 errors which crash .json()
+            const contentType = res.headers.get("content-type");
+            if (!contentType || !contentType.includes("application/json")) {
+                const text = await res.text();
+                // If HTML, it's likely a Cloudflare Block
+                if (text.includes("<!DOCTYPE html>")) {
+                   throw new Error(`Instance blocked (Cloudflare ${res.status})`);
+                }
+                throw new Error(`Invalid response format: ${text.substring(0, 50)}`);
+            }
+
             const data = await res.json();
             if (data.status === "error" || data.status === "rate-limit") throw new Error(data.text);
             
             await processData(data); // Reuse processing logic
             success = true;
             break; // Stop after success
-        } catch (e) {
-            console.log(`Client-Side Instance ${instance} failed`, e);
+        } catch (e: any) {
+            console.log(`Client-Side Instance ${instance} failed:`, e.message);
         }
       }
 
