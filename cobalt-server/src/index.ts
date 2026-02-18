@@ -11,25 +11,26 @@ export class CobaltContainer extends DurableObject<Env> {
 
   async fetch(request: Request): Promise<Response> {
     const url = new URL(request.url);
+
+    // Root Check
     if (url.pathname === "/" && request.method === "GET") {
       return new Response(JSON.stringify({
         status: "ok",
-        service: "Cobalt Container Proxy",
-        target: "localhost:80"
+        service: "Cobalt Gateway",
+        message: "API available at /api/json"
       }), {
         status: 200,
         headers: { "Content-Type": "application/json", "Access-Control-Allow-Origin": "*" }
       });
     }
 
-    // PROXY LOGIC FIX:
-    // Focus on the standard Cobalt port 9000
+    // Proxy Logic
     const containerUrl = new URL(url.pathname + url.search, "http://localhost:9000");
 
-    // Clean headers 
     const newHeaders = new Headers();
     if (request.headers.has("Content-Type")) newHeaders.set("Content-Type", request.headers.get("Content-Type")!);
     if (request.headers.has("Accept")) newHeaders.set("Accept", "application/json"); 
+    newHeaders.set("User-Agent", "Cobalt-Worker-Proxy/1.0");
 
     const proxyRequest = new Request(containerUrl.toString(), {
       method: request.method,
@@ -39,12 +40,28 @@ export class CobaltContainer extends DurableObject<Env> {
     });
 
     try {
-      const res = await fetch(proxyRequest);
-      return this.corsResponse(res);
+      const response = await fetch(proxyRequest);
+
+      // CRITICAL FIX: Intercept Cloudflare 530/1003 errors from upstream
+      // These mean the container is unreachable, but fetch() returns them as valid responses.
+      if (response.status === 530 || response.status === 1003) {
+         return new Response(JSON.stringify({
+            status: "error",
+            code: "CONTAINER_CONNECTION_FAILED",
+            message: "The internal Cobalt container is unreachable (Status 530/1003). Please check Cloudflare logs."
+         }), {
+            status: 502,
+            headers: { "Content-Type": "application/json", "Access-Control-Allow-Origin": "*" }
+         });
+      }
+
+      return this.corsResponse(response);
+
     } catch (e: any) {
       return new Response(JSON.stringify({ 
-         error: "Container Unreachable (localhost:9000)", 
-         details: e.message 
+         status: "error",
+         code: "PROXY_EXCEPTION",
+         message: e.message 
       }), { status: 502, headers: { "Content-Type": "application/json", "Access-Control-Allow-Origin": "*" } });
     }
   }
@@ -68,7 +85,7 @@ export default {
     if (new URL(request.url).pathname === "/health") return new Response("OK", { status: 200, headers: {"Access-Control-Allow-Origin": "*"} });
 
     try {
-      const id = env.COBALT_SERVICE.idFromName("global-prod-sidecar-v5");
+      const id = env.COBALT_SERVICE.idFromName("cobalt-gateway-manager-v2");
       const stub = env.COBALT_SERVICE.get(id);
       return await stub.fetch(request);
     } catch (e: any) {
