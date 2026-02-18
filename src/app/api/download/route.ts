@@ -6,18 +6,7 @@ export const runtime = "edge"; // Mandatory for Cloudflare Workers/Pages
 // Note: In Cloudflare Workers, process.env is replaced by global env variables
 // However, Next.js Edge Runtime handles process.env correctly via build-time inlining or runtime binding.
 // However, Next.js Edge Runtime handles process.env correctly via build-time inlining or runtime binding.
-const COBALT_INSTANCES = [
-  // 1. Priority: Environment Variable from Cloudflare Dashboard or .env.local
-  process.env.COBALT_API_URL, 
-  
-  // 2. Localhost Fallback (Only in Dev)
-  process.env.NODE_ENV === 'development' ? "http://127.0.0.1:9000/" : null,
-
-  // 3. Hardcoded Fallback (Public instances)
-  "https://api.cobalt.tools/", 
-  "https://co.wuk.sh/",
-  "https://sh.cobalt.tools/"
-].filter(Boolean) as string[];
+// Moved inside handler to ensure runtime env vars are picked up correctly
 
 type CobaltResponse = {
   status: "redirect" | "stream" | "success" | "rate-limit" | "error" | "picker";
@@ -39,6 +28,17 @@ export async function POST(request: NextRequest) {
     console.log(`[Download] Processing: ${url}`);
 
     let lastError = null;
+    
+    // Construct instances array inside handler for safe runtime env access
+    const COBALT_INSTANCES = [
+      process.env.COBALT_API_URL, 
+      process.env.NODE_ENV === 'development' ? "http://127.0.0.1:9000/" : null,
+      "https://api.cobalt.tools/", 
+      "https://co.wuk.sh/",
+      "https://sh.cobalt.tools/"
+    ].filter(Boolean) as string[];
+
+    console.log(`[Download] Available Providers: ${COBALT_INSTANCES.join(', ')}`);
 
     for (const instance of COBALT_INSTANCES) {
       try {
