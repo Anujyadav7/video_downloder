@@ -13,9 +13,11 @@
   },
   "containers": [
     {
-      "name": "cobalt-server-container",
+      "name": "cobalt-container-v4",
       "class_name": "CobaltContainer",
-      "image": "./Dockerfile"
+      "image": "./Dockerfile",
+      "cpu": 2,
+      "memory": 1024
     }
   ],
   "migrations": [
