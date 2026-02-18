@@ -212,6 +212,9 @@ export default function InputBox({ onDownload, type = "video" }: InputBoxProps) 
       for (const instance of FALLBACK_INSTANCES) {
         try {
             console.log(`Trying Client-Side: ${instance}`);
+            const controller = new AbortController();
+            const timeoutId = setTimeout(() => controller.abort(), 5000); // 5s timeout for client fallback
+
             const res = await fetch(instance, {
                 method: "POST",
                 mode: 'cors',
@@ -222,8 +225,10 @@ export default function InputBox({ onDownload, type = "video" }: InputBoxProps) 
                 },
                 body: JSON.stringify({
                     url: url
-                })
+                }),
+                signal: controller.signal
             });
+            clearTimeout(timeoutId);
             const data = await res.json();
             if (data.status === "error" || data.status === "rate-limit") throw new Error(data.text);
             
