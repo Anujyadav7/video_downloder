@@ -17,7 +17,12 @@
       "class_name": "CobaltContainer",
       "image": "./Dockerfile",
       "cpu": 4,
-      "memory": 1024
+      "memory": 1024,
+      "environment": {
+        "API_URL": "https://cobalt-server.infoanuj74.workers.dev/",
+        "API_NAME": "FastVideoSave",
+        "CORS_WILDCARD": "1"
+      }
     }
   ],
   "migrations": [
