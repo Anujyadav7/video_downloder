@@ -13,10 +13,10 @@
   },
   "containers": [
     {
-      "name": "cobalt-container-v4",
+      "name": "cobalt-worker-v10",
       "class_name": "CobaltContainer",
       "image": "./Dockerfile",
-      "cpu": 2,
+      "cpu": 4,
       "memory": 1024
     }
   ],
