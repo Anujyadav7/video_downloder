@@ -24,13 +24,17 @@ export class CobaltContainer extends DurableObject<Env> {
       });
     }
 
-    // Proxy Logic
-    const containerUrl = new URL(url.pathname + url.search, "http://localhost:9000");
+    // Proxy Logic - Using Internal Cloudflare Container Name
+    // This connects to the sibling container 'cobalt-worker-v10' on port 8080
+    const containerUrl = new URL(url.pathname + url.search, "http://cobalt-worker-v10:8080");
 
     const newHeaders = new Headers();
     if (request.headers.has("Content-Type")) newHeaders.set("Content-Type", request.headers.get("Content-Type")!);
     if (request.headers.has("Accept")) newHeaders.set("Accept", "application/json"); 
     newHeaders.set("User-Agent", "Cobalt-Worker-Proxy/1.0");
+
+    console.log(`[Proxy] Forwarding to: ${containerUrl.toString()}`);
+    console.log(`[Proxy] Headers:`, JSON.stringify([...newHeaders.entries()]));
 
     const proxyRequest = new Request(containerUrl.toString(), {
       method: request.method,
@@ -40,7 +44,9 @@ export class CobaltContainer extends DurableObject<Env> {
     });
 
     try {
+      console.log(`[Proxy] Fetching upstream...`);
       const response = await fetch(proxyRequest);
+      console.log(`[Proxy] Upstream responded: ${response.status}`);
 
       // CRITICAL FIX: Intercept Cloudflare 530/1003 errors from upstream
       // These mean the container is unreachable, but fetch() returns them as valid responses.
