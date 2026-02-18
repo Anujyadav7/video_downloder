@@ -22,18 +22,16 @@ export class CobaltContainer extends DurableObject<Env> {
       });
     }
 
-    // Attempt connection to the container sidecar
-    // We try localhost:80 (standard) and localhost:9000 (Cobalt default)
-    // Using simple fetch to avoid complex resolving issues
-    const containerUrl80 = new URL(url.pathname + url.search, "http://localhost:80");
-    const containerUrl9000 = new URL(url.pathname + url.search, "http://localhost:9000");
+    // PROXY LOGIC FIX:
+    // Focus on the standard Cobalt port 9000
+    const containerUrl = new URL(url.pathname + url.search, "http://localhost:9000");
 
     // Clean headers 
     const newHeaders = new Headers();
     if (request.headers.has("Content-Type")) newHeaders.set("Content-Type", request.headers.get("Content-Type")!);
     if (request.headers.has("Accept")) newHeaders.set("Accept", "application/json"); 
 
-    const req80 = new Request(containerUrl80.toString(), {
+    const proxyRequest = new Request(containerUrl.toString(), {
       method: request.method,
       headers: newHeaders,
       body: request.body,
@@ -41,27 +39,13 @@ export class CobaltContainer extends DurableObject<Env> {
     });
 
     try {
-      // Primary Attempt: Port 80 (Cloudflare Standard)
-      const res = await fetch(req80);
+      const res = await fetch(proxyRequest);
       return this.corsResponse(res);
     } catch (e: any) {
-      console.log(`Port 80 failed: ${e.message}. Trying 9000...`);
-      // Secondary Attempt: Port 9000 (Cobalt Default)
-      try {
-        const req9000 = new Request(containerUrl9000.toString(), {
-          method: request.method,
-          headers: newHeaders,
-          body: request.body,
-          redirect: "follow"
-        });
-        const res2 = await fetch(req9000);
-        return this.corsResponse(res2);
-      } catch (e2: any) {
-        return new Response(JSON.stringify({ 
-           error: "Container Unreachable", 
-           details: `Port 80: ${e.message}, Port 9000: ${e2.message}` 
-        }), { status: 502, headers: { "Content-Type": "application/json", "Access-Control-Allow-Origin": "*" } });
-      }
+      return new Response(JSON.stringify({ 
+         error: "Container Unreachable (localhost:9000)", 
+         details: e.message 
+      }), { status: 502, headers: { "Content-Type": "application/json", "Access-Control-Allow-Origin": "*" } });
     }
   }
 
