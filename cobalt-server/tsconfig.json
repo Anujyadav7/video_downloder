@@ -8,6 +8,7 @@
 		"lib": ["es2024"],
     /* Specify what JSX code is generated. */
 		"jsx": "react-jsx",
+		"types": ["@cloudflare/workers-types/2023-07-01"],
 
     /* Specify what module code is generated. */
 		"module": "es2022",

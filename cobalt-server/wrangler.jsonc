@@ -2,17 +2,18 @@
   "name": "cobalt-server",
   "main": "src/index.ts",
   "compatibility_date": "2025-10-01",
+  "compatibility_flags": ["nodejs_compat"],
   "durable_objects": {
     "bindings": [
       {
-        "name": "cobalt_service",
+        "name": "COBALT_SERVICE",
         "class_name": "CobaltContainer"
       }
     ]
   },
   "containers": [
     {
-      "name": "cobalt_image",
+      "name": "cobalt-server-container",
       "class_name": "CobaltContainer",
       "image": "./Dockerfile"
     }
