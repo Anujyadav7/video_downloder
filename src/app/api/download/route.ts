@@ -137,9 +137,11 @@ export async function POST(request: NextRequest) {
     }
 
     // If all failed
+    // If all failed
+    const errorStatus = (lastError?.message && lastError.message.includes("HTTP 4")) ? 400 : 500;
     return NextResponse.json(
-      { error: `Download failed. All providers exhausted. Last error: ${lastError?.message || "Unknown"}` },
-      { status: 500 }
+      { error: `Download failed. Last provider error: ${lastError?.message || "Unknown"}` },
+      { status: errorStatus }
     );
 
   } catch (error: any) {
