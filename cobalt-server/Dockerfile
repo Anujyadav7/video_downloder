@@ -1,4 +1,5 @@
 FROM ghcr.io/imputnet/cobalt:10
-# Cobalt v10 standard port is 9000
-ENV PORT=9000
-EXPOSE 9000
+# Cloudflare Containers often bridge port 80 by default
+ENV PORT=80
+ENV API_PORT=80
+EXPOSE 80
