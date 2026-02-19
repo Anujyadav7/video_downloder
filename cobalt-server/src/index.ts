@@ -24,9 +24,9 @@ export class CobaltContainer extends DurableObject<Env> {
       });
     }
 
-    // Proxy Logic - Using Internal Cloudflare Container Name
-    // This connects to the sibling container 'cobalt-worker-v10' on port 8080
-    const containerUrl = new URL(url.pathname + url.search, "http://cobalt-worker-v10:8080");
+    // Proxy Logic - Reverting to localhost
+    // Cloudflare Containers share network namespace, so localhost works reliably
+    const containerUrl = new URL(url.pathname + url.search, "http://localhost:8080");
 
     const newHeaders = new Headers();
     if (request.headers.has("Content-Type")) newHeaders.set("Content-Type", request.headers.get("Content-Type")!);

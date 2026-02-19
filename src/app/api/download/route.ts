@@ -67,7 +67,15 @@ export async function POST(request: NextRequest) {
                 body: payload
             });
 
-            const res = await worker.fetch(workerReq);
+            // Implement 10s Timeout for Binding
+            const timeoutPromise = new Promise<Response>((_, reject) => 
+                setTimeout(() => reject(new Error("Service Binding Timeout (10s)")), 10000)
+            );
+
+            const res = await Promise.race([
+                worker.fetch(workerReq),
+                timeoutPromise
+            ]);
             
             if (res.ok) {
                 resultResponse = res;
