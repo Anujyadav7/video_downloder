@@ -59,9 +59,8 @@ export async function POST(request: NextRequest) {
     if (!isLocal && worker && typeof worker.fetch === 'function') {
         console.log("[Download] Using Service Binding: COBALT_WORKER");
         try {
-            // Use Internal URL with /api/json per user request
-            // Note: If v10 container fails on /api/json, check logs
-            const workerReq = new Request("https://internal.cobalt/api/json", {
+            // Use explicit localhost URL for clarity, though binding name handles routing
+            const workerReq = new Request("http://localhost:8080/api/json", {
                 method: "POST",
                 headers: securityHeaders,
                 body: payload
