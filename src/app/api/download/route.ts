@@ -3,6 +3,19 @@ import { getRequestContext } from "@cloudflare/next-on-pages";
 
 export const runtime = "edge";
 
+// --- Handle CORS Preflight ---
+export async function OPTIONS() {
+  return new NextResponse(null, {
+    status: 200,
+    headers: {
+      "Access-Control-Allow-Origin": "*",
+      "Access-Control-Allow-Methods": "POST, OPTIONS",
+      "Access-Control-Allow-Headers": "Content-Type",
+    },
+  });
+}
+
+// --- Main Handler ---
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
@@ -22,29 +35,7 @@ export async function POST(request: NextRequest) {
     }
 
     const worker = env?.COBALT_WORKER;
-    
-    // Construct Request Headers to Bypass 403 / Bot Detection
-    const headers = {
-        "Content-Type": "application/json",
-        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36",
-        "Accept": "application/json",
-        "Referer": "https://video-downloder.pages.dev/", // Hardcoded to production URL
-        "x-requested-with": "XMLHttpRequest"
-    };
-
-    // Construct Payload (Add Proxy if available)
-    const payload: any = { 
-        url, 
-        isAudioOnly,
-        filenameStyle: "pretty" 
-    };
-    
-    if (env?.PROXY_URL) {
-        payload.proxy = env.PROXY_URL; // Pass proxy if configured
-    }
-
     let resultResponse: Response | null = null;
-    let usedMethod = "Unknown";
 
     // ---------------------------------------------------------
     // 1. Try Service Binding (Priority)
@@ -52,26 +43,29 @@ export async function POST(request: NextRequest) {
     if (worker && typeof worker.fetch === 'function') {
         console.log("[Download] Using Service Binding: COBALT_WORKER");
         try {
-            // Use 'cobalt-server' as host to match expected Worker host
-            const workerReq = new Request("https://cobalt-server/api/json", {
+            // CRITICAL FIX: Cobalt v10 Container expects POST request at ROOT '/'
+            // Previous '/api/json' was causing 404/405 errors
+            const workerReq = new Request("https://cobalt-server/", {
                 method: "POST",
-                headers: headers,
-                body: JSON.stringify(payload)
+                headers: {
+                    "Content-Type": "application/json",
+                    "Accept": "application/json"
+                    // Removed extra security headers that were causing issues
+                },
+                body: JSON.stringify({ 
+                    url, 
+                    isAudioOnly,
+                    filenameStyle: "pretty" 
+                })
             });
 
             const res = await worker.fetch(workerReq);
             
             if (res.ok) {
                 resultResponse = res;
-                usedMethod = "Service Binding";
             } else {
                 const errText = await res.text();
-                // If 1003 or 403, it might be the Internal WAF.
-                // We fallback to Public if binding fails hard.
                 console.warn(`[Download] Service Binding failed: ${res.status} - ${errText}`);
-                if (res.status === 403 || res.status === 530) {
-                     // 1003/1016 -> Fallback to Public needed
-                }
             }
         } catch (e: any) {
              console.warn(`[Download] Service Binding Exception: ${e.message}`);
@@ -79,11 +73,12 @@ export async function POST(request: NextRequest) {
     }
 
     // ---------------------------------------------------------
-    // 2. Fallback to Public Instances (Crucial for 1016/1003 bypass)
+    // 2. Fallback to Public Instances
     // ---------------------------------------------------------
     if (!resultResponse) {
-        console.log("[Download] Falling back to Public Providers due to Binding Failure");
+        console.log("[Download] Falling back to Public Providers");
         
+        // Public instances use /api/json (v7/compat API)
         const PUBLIC_INSTANCES = [
           "https://api.cobalt.tools/api/json", 
           "https://co.wuk.sh/api/json",
@@ -98,15 +93,21 @@ export async function POST(request: NextRequest) {
             console.log(`[Download] Trying public: ${instance}`);
             const response = await fetch(instance, {
               method: "POST",
-              headers: headers, // Reuse robust headers
-              body: JSON.stringify(payload),
+              headers: {
+                "Content-Type": "application/json",
+                "Accept": "application/json"
+              },
+              body: JSON.stringify({
+                 url: url,
+                 filenameStyle: "pretty",
+                 ...(isAudioOnly ? { isAudioOnly: true } : {})
+              }),
               signal: controller.signal
             });
             clearTimeout(timeoutId);
 
             if (response.ok) {
                 resultResponse = response;
-                usedMethod = instance;
                 break;
             }
           } catch (e) {
