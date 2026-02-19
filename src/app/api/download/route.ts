@@ -147,7 +147,11 @@ export async function POST(request: NextRequest) {
   } catch (error: any) {
     console.error("[Download] Critical Error:", error);
     return NextResponse.json(
-      { error: "Internal Server Error" },
+      { 
+        error: "Internal Server Error", 
+        details: error.message,
+        stack: error.stack 
+      },
       { status: 500 }
     );
   }
