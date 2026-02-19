@@ -10,103 +10,128 @@ export async function POST(request: NextRequest) {
     
     console.log(`[Download] Processing: ${url}`);
 
-    // ---------------------------------------------------------
-    // 1. Extract Environment (Comprehensive Check)
-    // ---------------------------------------------------------
+    // Extract Environment
     let env: any = null;
-    
-    // Try getRequestContext() (Standard for next-on-pages)
     try {
         const ctx = getRequestContext();
-        if (ctx && ctx.env) {
-            env = ctx.env;
-            console.log("[Download] Env loaded from getRequestContext()");
-        }
+        if (ctx && ctx.env) env = ctx.env;
     } catch (e) { console.log("[Download] getRequestContext unavailable"); }
 
-    // Try request object (User requested method)
     if (!env) {
-        env = (request as any).env || (request as any).nextjs?.env;
-        if (env) console.log("[Download] Env loaded from request object");
+        env = (request as any).env || (request as any).nextjs?.env || process.env;
     }
 
-    // fallback to process.env for local dev mocking?
-    if (!env) {
-        console.warn("[Download] Env not found on request or context. Falling back to process.env (risky)");
-        env = process.env;
-    }
-
-    // ---------------------------------------------------------
-    // 2. Validate Service Binding
-    // ---------------------------------------------------------
     const worker = env?.COBALT_WORKER;
     
-    if (!worker || typeof worker.fetch !== 'function') {
-        console.error("[Download] CRITICAL: Service Binding 'COBALT_WORKER' is missing or invalid.");
-        console.log("Details - content of env:", Object.keys(env || {}));
-        return NextResponse.json(
-            { error: "Service Binding COBALT_WORKER Missing" },
-            { status: 500 }
-        );
+    // Construct Request Headers to Bypass 403 / Bot Detection
+    const headers = {
+        "Content-Type": "application/json",
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36",
+        "Accept": "application/json",
+        "Referer": "https://video-downloder.pages.dev/", // Hardcoded to production URL
+        "x-requested-with": "XMLHttpRequest"
+    };
+
+    // Construct Payload (Add Proxy if available)
+    const payload: any = { 
+        url, 
+        isAudioOnly,
+        filenameStyle: "pretty" 
+    };
+    
+    if (env?.PROXY_URL) {
+        payload.proxy = env.PROXY_URL; // Pass proxy if configured
     }
 
-    console.log("[Download] Using Service Binding: COBALT_WORKER");
+    let resultResponse: Response | null = null;
+    let usedMethod = "Unknown";
 
     // ---------------------------------------------------------
-    // 3. Execute Internal Fetch (Bypass Public DNS)
+    // 1. Try Service Binding (Priority)
     // ---------------------------------------------------------
-    try {
-        // "https://internal.cobalt" is dummy; Worker intercepts.
-        const workerReq = new Request("https://internal.cobalt/api/json", {
-            method: "POST",
-            headers: {
-                "Content-Type": "application/json",
-                // User Requested UA
-                "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Safari/537.36"
-            },
-            body: JSON.stringify({ 
-                url, 
-                isAudioOnly,
-                filenameStyle: "pretty" 
-            })
-        });
+    if (worker && typeof worker.fetch === 'function') {
+        console.log("[Download] Using Service Binding: COBALT_WORKER");
+        try {
+            // Use 'cobalt-server' as host to match expected Worker host
+            const workerReq = new Request("https://cobalt-server/api/json", {
+                method: "POST",
+                headers: headers,
+                body: JSON.stringify(payload)
+            });
 
-        const res = await worker.fetch(workerReq);
-        
-        if (res.ok) {
-            const data = await res.json();
-            return NextResponse.json(data);
-        } else {
-            const errText = await res.text();
-            console.error(`[Download] Worker Returned Error: ${res.status}`);
-            console.error(`[Download] Error Body: ${errText}`); // Log full body as requested
+            const res = await worker.fetch(workerReq);
             
-            return NextResponse.json(
-                { 
-                    error: `Worker Error ${res.status}`, 
-                    details: errText 
-                },
-                { status: res.status } // Propagate worker status (e.g. 400, 500)
-            );
+            if (res.ok) {
+                resultResponse = res;
+                usedMethod = "Service Binding";
+            } else {
+                const errText = await res.text();
+                // If 1003 or 403, it might be the Internal WAF.
+                // We fallback to Public if binding fails hard.
+                console.warn(`[Download] Service Binding failed: ${res.status} - ${errText}`);
+                if (res.status === 403 || res.status === 530) {
+                     // 1003/1016 -> Fallback to Public needed
+                }
+            }
+        } catch (e: any) {
+             console.warn(`[Download] Service Binding Exception: ${e.message}`);
         }
-
-    } catch (e: any) {
-        console.error(`[Download] Binding Fetch Logic Failed: ${e.message}`);
-        console.error(e.stack);
-        return NextResponse.json(
-            { error: "Internal Fetch Exception", details: e.message },
-            { status: 500 }
-        );
     }
+
+    // ---------------------------------------------------------
+    // 2. Fallback to Public Instances (Crucial for 1016/1003 bypass)
+    // ---------------------------------------------------------
+    if (!resultResponse) {
+        console.log("[Download] Falling back to Public Providers due to Binding Failure");
+        
+        const PUBLIC_INSTANCES = [
+          "https://api.cobalt.tools/api/json", 
+          "https://co.wuk.sh/api/json",
+          "https://sh.cobalt.tools/api/json"
+        ];
+
+        for (const instance of PUBLIC_INSTANCES) {
+          try {
+            const controller = new AbortController();
+            const timeoutId = setTimeout(() => controller.abort(), 10000);
+
+            console.log(`[Download] Trying public: ${instance}`);
+            const response = await fetch(instance, {
+              method: "POST",
+              headers: headers, // Reuse robust headers
+              body: JSON.stringify(payload),
+              signal: controller.signal
+            });
+            clearTimeout(timeoutId);
+
+            if (response.ok) {
+                resultResponse = response;
+                usedMethod = instance;
+                break;
+            }
+          } catch (e) {
+             console.warn(`[Download] Public provider ${instance} failed`);
+          }
+        }
+    }
+
+    // ---------------------------------------------------------
+    // 3. Final Response
+    // ---------------------------------------------------------
+    if (resultResponse) {
+        const data = await resultResponse.json();
+        return NextResponse.json(data);
+    }
+
+    return NextResponse.json(
+        { error: "All providers failed (Binding & Public)" }, 
+        { status: 500 }
+    );
 
   } catch (error: any) {
-    console.error("[Download] Critical Handler Error:", error);
+    console.error("[Download] Critical Error:", error);
     return NextResponse.json(
-      { 
-        error: "Internal Server Error", 
-        details: error.message,
-        stack: error.stack 
-      },
+      { error: "Internal Server Error", details: error.message },
       { status: 500 }
     );
   }
