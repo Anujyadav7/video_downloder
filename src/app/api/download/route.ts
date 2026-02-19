@@ -4,132 +4,103 @@ import { getRequestContext } from "@cloudflare/next-on-pages";
 export const runtime = "edge";
 
 export async function POST(request: NextRequest) {
-  let url: string | undefined;
-  let isAudioOnly = false;
-
   try {
     const body = await request.json();
-    url = body.url;
-    isAudioOnly = body.isAudioOnly;
+    const { url, isAudioOnly } = body;
     
     console.log(`[Download] Processing: ${url}`);
 
     // ---------------------------------------------------------
-    // 1. Get Service Binding
+    // 1. Extract Environment (Comprehensive Check)
     // ---------------------------------------------------------
-    const ctx = getRequestContext();
-    const env = ctx.env as any;
-    const worker = env.COBALT_WORKER; // Service Binding
-
-    let successfulResponse: Response | null = null;
-    let lastError: any = null;
-
-    // ---------------------------------------------------------
-    // 2. Try Service Binding (Primary)
-    // ---------------------------------------------------------
-    if (worker && typeof worker.fetch === 'function') {
-        console.log("[Download] Attempting Service Binding: COBALT_WORKER");
-        try {
-            // "https://internal.cobalt" is a dummy URL for the binding. 
-            // The Worker intercepts it. Path "/api/json" matches typical Cobalt endpoint.
-            const workerReq = new Request("https://internal.cobalt/api/json", {
-                method: "POST",
-                headers: {
-                    "Content-Type": "application/json",
-                    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) Chrome/120.0.0.0"
-                },
-                body: JSON.stringify({ 
-                    url, 
-                    isAudioOnly,
-                    filenameStyle: "pretty" 
-                })
-            });
-
-            const res = await worker.fetch(workerReq);
-            
-            if (res.ok) {
-                successfulResponse = res;
-                console.log("[Download] Service Binding Success");
-            } else {
-                const errText = await res.text();
-                console.warn(`[Download] Service Binding failed: ${res.status} - ${errText}`);
-                lastError = new Error(`Service Binding Error ${res.status}: ${errText}`);
-            }
-        } catch (e: any) {
-            console.warn(`[Download] Service Binding Exception: ${e.message}`);
-            lastError = e;
+    let env: any = null;
+    
+    // Try getRequestContext() (Standard for next-on-pages)
+    try {
+        const ctx = getRequestContext();
+        if (ctx && ctx.env) {
+            env = ctx.env;
+            console.log("[Download] Env loaded from getRequestContext()");
         }
-    } else {
-        console.warn("[Download] COBALT_WORKER binding not found or invalid.");
-        lastError = new Error("Service Binding COBALT_WORKER not found");
+    } catch (e) { console.log("[Download] getRequestContext unavailable"); }
+
+    // Try request object (User requested method)
+    if (!env) {
+        env = (request as any).env || (request as any).nextjs?.env;
+        if (env) console.log("[Download] Env loaded from request object");
+    }
+
+    // fallback to process.env for local dev mocking?
+    if (!env) {
+        console.warn("[Download] Env not found on request or context. Falling back to process.env (risky)");
+        env = process.env;
     }
 
     // ---------------------------------------------------------
-    // 3. Fallback to Public Instances (If Binding Failed)
+    // 2. Validate Service Binding
     // ---------------------------------------------------------
-    if (!successfulResponse) {
-        console.warn("[Download] Falling back to Public Cobalt Instances");
-        
-        const PUBLIC_INSTANCES = [
-          "https://api.cobalt.tools/api/json", 
-          "https://co.wuk.sh/api/json",
-          "https://sh.cobalt.tools/api/json"
-        ];
+    const worker = env?.COBALT_WORKER;
+    
+    if (!worker || typeof worker.fetch !== 'function') {
+        console.error("[Download] CRITICAL: Service Binding 'COBALT_WORKER' is missing or invalid.");
+        console.log("Details - content of env:", Object.keys(env || {}));
+        return NextResponse.json(
+            { error: "Service Binding COBALT_WORKER Missing" },
+            { status: 500 }
+        );
+    }
 
-        for (const instance of PUBLIC_INSTANCES) {
-          try {
-            const controller = new AbortController();
-            const timeoutId = setTimeout(() => controller.abort(), 10000);
+    console.log("[Download] Using Service Binding: COBALT_WORKER");
 
-            console.log(`[Download] Trying public: ${instance}`);
-            const response = await fetch(instance, {
-              method: "POST",
-              headers: {
-                "Accept": "application/json",
+    // ---------------------------------------------------------
+    // 3. Execute Internal Fetch (Bypass Public DNS)
+    // ---------------------------------------------------------
+    try {
+        // "https://internal.cobalt" is dummy; Worker intercepts.
+        const workerReq = new Request("https://internal.cobalt/api/json", {
+            method: "POST",
+            headers: {
                 "Content-Type": "application/json",
-                 // Standard User-Agent to avoid blocks
-                "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) Chrome/120.0.0.0"
-              },
-              body: JSON.stringify({
-                 url: url,
-                 filenameStyle: "pretty",
-                 ...(isAudioOnly ? { isAudioOnly: true } : {})
-              }),
-              signal: controller.signal
-            });
-            clearTimeout(timeoutId);
+                // User Requested UA
+                "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Safari/537.36"
+            },
+            body: JSON.stringify({ 
+                url, 
+                isAudioOnly,
+                filenameStyle: "pretty" 
+            })
+        });
 
-            if (response.ok) {
-                successfulResponse = response;
-                break;
-            }
-            lastError = new Error(`Public HTTP ${response.status}`);
-          } catch (e: any) {
-             console.warn(`[Download] Public provider error: ${e.message}`);
-             lastError = e;
-          }
+        const res = await worker.fetch(workerReq);
+        
+        if (res.ok) {
+            const data = await res.json();
+            return NextResponse.json(data);
+        } else {
+            const errText = await res.text();
+            console.error(`[Download] Worker Returned Error: ${res.status}`);
+            console.error(`[Download] Error Body: ${errText}`); // Log full body as requested
+            
+            return NextResponse.json(
+                { 
+                    error: `Worker Error ${res.status}`, 
+                    details: errText 
+                },
+                { status: res.status } // Propagate worker status (e.g. 400, 500)
+            );
         }
-    }
 
-    // ---------------------------------------------------------
-    // 4. Return Response
-    // ---------------------------------------------------------
-    if (successfulResponse) {
-        const data = await successfulResponse.json();
-        return NextResponse.json(data);
+    } catch (e: any) {
+        console.error(`[Download] Binding Fetch Logic Failed: ${e.message}`);
+        console.error(e.stack);
+        return NextResponse.json(
+            { error: "Internal Fetch Exception", details: e.message },
+            { status: 500 }
+        );
     }
-
-    return NextResponse.json(
-        { 
-            error: "All providers failed", 
-            details: lastError?.message || "Unknown error",
-            stack: lastError?.stack
-        },
-        { status: 500 }
-    );
 
   } catch (error: any) {
-    console.error("[Download] Critical Error:", error);
+    console.error("[Download] Critical Handler Error:", error);
     return NextResponse.json(
       { 
         error: "Internal Server Error", 
