@@ -1,7 +1,11 @@
 name = "video-downloader"
-compatibility_date = "2024-09-23"
+compatibility_date = "2025-02-01"
 compatibility_flags = ["nodejs_compat"]
 pages_build_output_dir = ".vercel/output/static"
 
 [vars]
-# Add public vars here if needed. Secrets go in dashboard.
+COBALT_URL = "https://cobalt-server.infoanuj74.workers.dev"
+
+[[services]]
+binding = "COBALT_WORKER"
+service = "cobalt-server"
