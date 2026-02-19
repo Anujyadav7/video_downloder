@@ -33,9 +33,9 @@ export async function POST(request: NextRequest) {
     const COBALT_INSTANCES = [
       process.env.COBALT_API_URL, 
       process.env.NODE_ENV === 'development' ? "http://127.0.0.1:9000/" : null,
-      "https://api.cobalt.tools/", 
-      "https://co.wuk.sh/",
-      "https://sh.cobalt.tools/"
+      "https://api.cobalt.tools/api/json", 
+      "https://co.wuk.sh/api/json",
+      "https://sh.cobalt.tools/api/json"
     ].filter(Boolean) as string[];
 
     console.log(`[Download] Available Providers: ${COBALT_INSTANCES.join(', ')}`);

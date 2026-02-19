@@ -115,9 +115,9 @@ export default function InputBox({ onDownload, type = "video" }: InputBoxProps) 
   // Verified Cobalt v10 mirrors + Private Worker
   const FALLBACK_INSTANCES = [
     "https://cobalt-server.infoanuj74.workers.dev/",
-    "https://api.cobalt.tools/",
-    "https://co.wuk.sh/",
-    "https://sh.cobalt.tools/"
+    "https://api.cobalt.tools/api/json",
+    "https://co.wuk.sh/api/json",
+    "https://sh.cobalt.tools/api/json"
   ];
 
   const handleDownload = async (e: React.FormEvent, reqMode: "auto" | "audio" = "auto") => {
