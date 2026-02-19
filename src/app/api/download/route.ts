@@ -19,7 +19,7 @@ export async function OPTIONS() {
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
-    const { url, isAudioOnly } = body;
+    const { url, isAudioOnly } = body; // My frontend sends 'url'
     
     console.log(`[Download] Processing: ${url}`);
 
@@ -28,90 +28,106 @@ export async function POST(request: NextRequest) {
     try {
         const ctx = getRequestContext();
         if (ctx && ctx.env) env = ctx.env;
-    } catch (e) { console.log("[Download] getRequestContext unavailable"); }
-
-    if (!env) {
-        env = (request as any).env || (request as any).nextjs?.env || process.env;
-    }
+    } catch (e) { /* ignore */ }
+    if (!env) env = (request as any).env || (request as any).nextjs?.env || process.env;
 
     const worker = env?.COBALT_WORKER;
+    const isLocal = process.env.NODE_ENV === 'development';
+    
+    // Security Headers (Crucial for 1003 bypass)
+    const securityHeaders = {
+        "Content-Type": "application/json",
+        "Accept": "application/json",
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Safari/537.36",
+        "Origin": "https://video-downloder.pages.dev",
+        "Referer": "https://video-downloder.pages.dev/",
+        "x-requested-with": "XMLHttpRequest"
+    };
+
+    const payload = JSON.stringify({ 
+        url, 
+        isAudioOnly,
+        filenameStyle: "pretty" 
+    });
+
     let resultResponse: Response | null = null;
+    let usedMethod = "Unknown";
 
     // ---------------------------------------------------------
-    // 1. Try Service Binding (Priority)
+    // 1. Try Service Binding (PRODUCTION ONLY)
     // ---------------------------------------------------------
-    if (worker && typeof worker.fetch === 'function') {
+    if (!isLocal && worker && typeof worker.fetch === 'function') {
         console.log("[Download] Using Service Binding: COBALT_WORKER");
         try {
-            // CRITICAL FIX: Cobalt v10 Container expects POST request at ROOT '/'
-            // Previous '/api/json' was causing 404/405 errors
-            const workerReq = new Request("https://cobalt-server/", {
+            // Use Internal URL with /api/json per user request
+            // Note: If v10 container fails on /api/json, check logs
+            const workerReq = new Request("https://internal.cobalt/api/json", {
                 method: "POST",
-                headers: {
-                    "Content-Type": "application/json",
-                    "Accept": "application/json"
-                    // Removed extra security headers that were causing issues
-                },
-                body: JSON.stringify({ 
-                    url, 
-                    isAudioOnly,
-                    filenameStyle: "pretty" 
-                })
+                headers: securityHeaders,
+                body: payload
             });
 
             const res = await worker.fetch(workerReq);
             
             if (res.ok) {
                 resultResponse = res;
+                usedMethod = "Service Binding";
+                console.log("[Download] Service Binding Success");
             } else {
-                const errText = await res.text();
-                console.warn(`[Download] Service Binding failed: ${res.status} - ${errText}`);
+                const txt = await res.text();
+                // If 1003/530, treat as failure and fallback
+                console.warn(`[Download] Service Binding failed: ${res.status} - ${txt}`);
             }
         } catch (e: any) {
              console.warn(`[Download] Service Binding Exception: ${e.message}`);
         }
+    } else if (isLocal) {
+        console.log("[Download] Localhost detected - Skipping Service Binding");
     }
 
     // ---------------------------------------------------------
-    // 2. Fallback to Public Instances
+    // 2. Fallback to API_URL or Public Instances
     // ---------------------------------------------------------
     if (!resultResponse) {
-        console.log("[Download] Falling back to Public Providers");
+        console.log("[Download] Falling back to Public/External Providers");
         
-        // Public instances use /api/json (v7/compat API)
-        const PUBLIC_INSTANCES = [
+        const FALLBACKS = [
+          env?.API_URL ? `${env.API_URL}/api/json` : null, // Use /api/json for consistency
           "https://api.cobalt.tools/api/json", 
           "https://co.wuk.sh/api/json",
           "https://sh.cobalt.tools/api/json"
-        ];
+        ].filter(Boolean) as string[];
 
-        for (const instance of PUBLIC_INSTANCES) {
+        // Filter duplicates and invalid URLs
+        const uniqueFallbacks = [...new Set(FALLBACKS)].filter(u => u && u.startsWith("http"));
+
+        for (const instance of uniqueFallbacks) {
           try {
             const controller = new AbortController();
-            const timeoutId = setTimeout(() => controller.abort(), 10000);
+            const timeoutId = setTimeout(() => controller.abort(), 12000);
 
-            console.log(`[Download] Trying public: ${instance}`);
-            const response = await fetch(instance, {
+            console.log(`[Download] Trying: ${instance}`);
+            
+            // Clean URL (remove double slashes)
+            const cleanUrl = instance.replace(/([^:]\/)\/+/g, "$1");
+
+            const response = await fetch(cleanUrl, {
               method: "POST",
-              headers: {
-                "Content-Type": "application/json",
-                "Accept": "application/json"
-              },
-              body: JSON.stringify({
-                 url: url,
-                 filenameStyle: "pretty",
-                 ...(isAudioOnly ? { isAudioOnly: true } : {})
-              }),
+              headers: securityHeaders, // Use same headers for bypass
+              body: payload,
               signal: controller.signal
             });
             clearTimeout(timeoutId);
 
             if (response.ok) {
                 resultResponse = response;
+                usedMethod = instance;
                 break;
+            } else {
+                 console.warn(`[Download] ${cleanUrl} returned ${response.status}`);
             }
-          } catch (e) {
-             console.warn(`[Download] Public provider ${instance} failed`);
+          } catch (e: any) {
+             console.warn(`[Download] ${instance} error: ${e.message}`);
           }
         }
     }
