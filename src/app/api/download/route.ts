@@ -3,173 +3,130 @@ import { getRequestContext } from "@cloudflare/next-on-pages";
 
 export const runtime = "edge";
 
-type CobaltResponse = {
-  status: "redirect" | "stream" | "success" | "rate-limit" | "error" | "picker";
-  url?: string;
-  filename?: string;
-  picker?: any[];
-  audio?: string;
-  thumb?: string;
-  text?: string;
-};
-
 export async function POST(request: NextRequest) {
+  let url: string | undefined;
+  let isAudioOnly = false;
+
   try {
     const body = await request.json();
-    const { url, isAudioOnly } = body;
-
+    url = body.url;
+    isAudioOnly = body.isAudioOnly;
+    
     console.log(`[Download] Processing: ${url}`);
 
-    let lastError: any = null;
+    // ---------------------------------------------------------
+    // 1. Get Service Binding
+    // ---------------------------------------------------------
+    const ctx = getRequestContext();
+    const env = ctx.env as any;
+    const worker = env.COBALT_WORKER; // Service Binding
+
     let successfulResponse: Response | null = null;
-    let usedProvider = "Unknown";
+    let lastError: any = null;
 
     // ---------------------------------------------------------
-    // 1. Try Service Binding (Internal, High Performance)
+    // 2. Try Service Binding (Primary)
     // ---------------------------------------------------------
-    try {
-        const ctx = getRequestContext();
-        const worker = (ctx.env as any).COBALT_WORKER;
-        
-        if (worker && typeof worker.fetch === 'function') {
-            console.log("[Download] Attempting Service Binding: COBALT_WORKER");
-            // Workers expect a Request object. We must construct a new one.
-            // Note: The URL here is internal to the binding, but Cobalt expects path routing.
-            const workerReq = new Request("http://cobalt-server/", {
+    if (worker && typeof worker.fetch === 'function') {
+        console.log("[Download] Attempting Service Binding: COBALT_WORKER");
+        try {
+            // "https://internal.cobalt" is a dummy URL for the binding. 
+            // The Worker intercepts it. Path "/api/json" matches typical Cobalt endpoint.
+            const workerReq = new Request("https://internal.cobalt/api/json", {
                 method: "POST",
                 headers: {
                     "Content-Type": "application/json",
-                    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36"
+                    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) Chrome/120.0.0.0"
                 },
-                body: JSON.stringify({ url, isAudioOnly })
+                body: JSON.stringify({ 
+                    url, 
+                    isAudioOnly,
+                    filenameStyle: "pretty" 
+                })
             });
 
             const res = await worker.fetch(workerReq);
+            
             if (res.ok) {
                 successfulResponse = res;
-                usedProvider = "Service Binding";
                 console.log("[Download] Service Binding Success");
             } else {
-                console.warn(`[Download] Service Binding failed: ${res.status}`);
-                lastError = new Error(`Service Binding Error: ${res.status}`);
+                const errText = await res.text();
+                console.warn(`[Download] Service Binding failed: ${res.status} - ${errText}`);
+                lastError = new Error(`Service Binding Error ${res.status}: ${errText}`);
             }
+        } catch (e: any) {
+            console.warn(`[Download] Service Binding Exception: ${e.message}`);
+            lastError = e;
         }
-    } catch (e: any) {
-        console.warn(`[Download] Service Binding Exception: ${e.message}`);
-        // Don't impede fallback
+    } else {
+        console.warn("[Download] COBALT_WORKER binding not found or invalid.");
+        lastError = new Error("Service Binding COBALT_WORKER not found");
     }
 
     // ---------------------------------------------------------
-    // 2. Fallback to HTTP Providers (If Binding Failed)
+    // 3. Fallback to Public Instances (If Binding Failed)
     // ---------------------------------------------------------
     if (!successfulResponse) {
-        const COBALT_INSTANCES = [
-          process.env.COBALT_URL, // Renamed from COBALT_API_URL per user request
-          process.env.COBALT_API_URL, // Legacy fallback
-          process.env.NODE_ENV === 'development' ? "http://127.0.0.1:9000/" : null,
+        console.warn("[Download] Falling back to Public Cobalt Instances");
+        
+        const PUBLIC_INSTANCES = [
           "https://api.cobalt.tools/api/json", 
           "https://co.wuk.sh/api/json",
           "https://sh.cobalt.tools/api/json"
-        ].filter(Boolean) as string[];
+        ];
 
-        console.log(`[Download] Falling back to HTTP Providers: ${COBALT_INSTANCES.join(', ')}`);
-
-        for (const instance of COBALT_INSTANCES) {
+        for (const instance of PUBLIC_INSTANCES) {
           try {
-            const endpoint = instance.endsWith('/') ? instance : `${instance}/`;
-            // Remove double slash if /api/json/ resulted
-            const cleanEndpoint = endpoint.replace(/\/api\/json\/$/, "/api/json"); 
-            
-            console.log(`[Download] Trying provider: ${cleanEndpoint}`);
-
             const controller = new AbortController();
-            const timeoutId = setTimeout(() => controller.abort(), 12000);
+            const timeoutId = setTimeout(() => controller.abort(), 10000);
 
-            const response = await fetch(cleanEndpoint, {
+            console.log(`[Download] Trying public: ${instance}`);
+            const response = await fetch(instance, {
               method: "POST",
               headers: {
                 "Accept": "application/json",
                 "Content-Type": "application/json",
-                "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36"
+                 // Standard User-Agent to avoid blocks
+                "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) Chrome/120.0.0.0"
               },
               body: JSON.stringify({
                  url: url,
+                 filenameStyle: "pretty",
                  ...(isAudioOnly ? { isAudioOnly: true } : {})
               }),
               signal: controller.signal
             });
-            
             clearTimeout(timeoutId);
 
             if (response.ok) {
                 successfulResponse = response;
-                usedProvider = cleanEndpoint;
                 break;
             }
-            
-            const errorText = await response.text(); // Consume body
-            throw new Error(`HTTP ${response.status}: ${errorText.substring(0, 50)}`);
-
+            lastError = new Error(`Public HTTP ${response.status}`);
           } catch (e: any) {
+             console.warn(`[Download] Public provider error: ${e.message}`);
              lastError = e;
-             console.warn(`[Download] Provider ${instance} error: ${e.message}`);
           }
         }
     }
 
     // ---------------------------------------------------------
-    // 3. Process Response
+    // 4. Return Response
     // ---------------------------------------------------------
-    if (!successfulResponse) {
-        const errorStatus = (lastError?.message && lastError.message.includes("HTTP 4")) ? 400 : 500;
-        return NextResponse.json(
-            { error: `Download failed. Last error: ${lastError?.message || "Unknown"}` },
-            { status: errorStatus }
-        );
+    if (successfulResponse) {
+        const data = await successfulResponse.json();
+        return NextResponse.json(data);
     }
 
-    // Parse Data
-    const data: any = await successfulResponse.json();
-
-    // Validate Status
-    if (data.status === "error" || data.status === "rate-limit") {
-        throw new Error(data.text || "Provider returned error status");
-    }
-
-    // Handle Picker (Carousel)
-    if (data.status === "picker" && data.picker && data.picker.length > 0) {
-        console.log(`[Download] Carousel found with ${data.picker.length} items`);
-        const pickerItems = data.picker.map((item: any) => {
-            const itemUrl = item.url;
-            return {
-                url: itemUrl,
-                type: (itemUrl.includes('.jpg') || itemUrl.includes('.png')) ? 'photo' : 'video',
-                thumb: item.thumb || itemUrl
-            };
-        });
-        return NextResponse.json({
-            status: "picker",
-            picker: pickerItems,
-            url: pickerItems[0]?.url 
-        });
-    }
-
-    // Handle Success
-    if (data.url || data.status === "redirect" || data.status === "stream") {
-        const mediaUrl = data.url;
-        const randomId = Math.random().toString(36).substring(2, 10);
-        const extension = isAudioOnly ? "mp3" : "mp4"; // Simplified extension logic
-        const filename = `download_${randomId}.${extension}`;
-
-        return NextResponse.json({
-            status: "success",
-            url: mediaUrl,
-            filename: filename,
-            thumb: data.thumb
-        });
-    }
-
-    throw new Error("Invalid response format from provider");
+    return NextResponse.json(
+        { 
+            error: "All providers failed", 
+            details: lastError?.message || "Unknown error",
+            stack: lastError?.stack
+        },
+        { status: 500 }
+    );
 
   } catch (error: any) {
     console.error("[Download] Critical Error:", error);
