@@ -1,11 +1,17 @@
 name = "video-downloader"
-compatibility_date = "2026-01-20"
+compatibility_date = "2026-02-21"
 compatibility_flags = ["nodejs_compat"]
 pages_build_output_dir = ".vercel/output/static"
 
 [vars]
-COBALT_API_URL = "http://localhost:9000/api/json"
+COBALT_API_URL = "http://cobalt-server:9000/api/json"
 
+# Cloudflare Containers Setup (Feb 2026 Standard)
+[[containers]]
+name = "cobalt-server"
+image = "ghcr.io/imputnet/cobalt:latest"
+
+# Internal Service Binding
 [[services]]
 binding = "COBALT_WORKER"
 service = "cobalt-server"

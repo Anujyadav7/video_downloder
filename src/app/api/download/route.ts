@@ -34,14 +34,16 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: "Service Binding COBALT_WORKER not found" }, { status: 500 });
     }
 
-    console.log("[Download] Production Mode: Using Service Binding bridge");
+    // Use the internal container URL from environment variables
+    const apiUrl = env.COBALT_API_URL || "http://cobalt-server:9000/api/json";
+    
+    console.log(`[Download] Production Mode: Routing to container at ${apiUrl}`);
 
-    // This Request bypasses public DNS (fixes Error 1003) by talking directly to the Worker
-    const response = await env.COBALT_WORKER.fetch(new Request("https://internal.cobalt/api/json", {
+    // Call the container directly via the COBALT_WORKER service binding
+    const response = await env.COBALT_WORKER.fetch(apiUrl, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
-        "Host": "cobalt-server.infoanuj74.workers.dev", // Fixes 1003 by identifying the target service
         "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) Chrome/122.0.0.0"
       },
       body: JSON.stringify({ 
@@ -49,7 +51,7 @@ export async function POST(request: NextRequest) {
         filenameStyle: "pretty",
         ...(isAudioOnly ? { isAudioOnly: true } : {})
       })
-    }));
+    });
 
     const data = await response.json();
     return NextResponse.json(data);
