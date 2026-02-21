@@ -24,14 +24,22 @@ export async function POST(request: NextRequest) {
       return NextResponse.json(data);
     }
 
-    // 2. Production Logic (Direct Public API Fetch)
+    // 2. Production Logic (High-Performance Service Binding)
     const ctx = getRequestContext();
     const env = ctx.env as any;
-    const apiUrl = env.COBALT_API_URL || "https://api.cobalt.tools/api/json";
 
-    console.log(`[Download] Production Mode: Fetching from ${apiUrl}`);
+    if (!env || !env.COBALT_WORKER) {
+      console.error("[Download] Production Error: Service Binding 'COBALT_WORKER' is missing in Cloudflare Dashboard.");
+      return NextResponse.json({ 
+        error: "Configuration Error", 
+        details: "Service Binding 'COBALT_WORKER' not found. Please check your Cloudflare Pages settings." 
+      }, { status: 500 });
+    }
 
-    const response = await fetch(apiUrl, {
+    console.log("[Download] Production Mode: Using internal Service Binding");
+
+    // Internal request using the binding - Bypasses public DNS (Fixes Error 1003)
+    const response = await env.COBALT_WORKER.fetch(new Request("https://internal.cobalt/api/json", {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
@@ -43,11 +51,15 @@ export async function POST(request: NextRequest) {
         filenameStyle: "pretty",
         ...(isAudioOnly ? { isAudioOnly: true } : {})
       })
-    });
+    }));
 
     if (!response.ok) {
-      const errorText = await response.text();
-      throw new Error(`Cloudflare API error (${response.status}): ${errorText}`);
+      const errorData = await response.json().catch(() => ({ error: "Unknown backend error" }));
+      console.error("[Download] Backend Service Error:", errorData);
+      return NextResponse.json({ 
+        error: "Backend Service Error", 
+        details: errorData.text || errorData.error || "The download service returned an error."
+      }, { status: response.status });
     }
 
     const data = await response.json();

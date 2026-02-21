@@ -5,3 +5,7 @@ pages_build_output_dir = ".vercel/output/static"
 
 [vars]
 COBALT_API_URL = "https://api.cobalt.tools/api/json"
+
+[[services]]
+binding = "COBALT_WORKER"
+service = "cobalt-server"
