@@ -4,13 +4,14 @@ compatibility_flags = ["nodejs_compat"]
 pages_build_output_dir = ".vercel/output/static"
 
 [vars]
-COBALT_API_URL = "https://api.cobalt.tools/api/json"
+# No public API URLs here to prevent loop confusion
+# Use internal service bindings instead
+
+[[services]]
+binding = "COBALT_WORKER"
+service = "cobalt-server"
 
 [[durable_objects.bindings]]
 name = "COBALT_SERVICE"
 class_name = "CobaltContainer"
 script_name = "cobalt-server"
-
-[[services]]
-binding = "COBALT_WORKER"
-service = "cobalt-server"
