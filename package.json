@@ -4,7 +4,7 @@
   "private": true,
   "scripts": {
     "dev": "next dev",
-    "build": "next build",
+    "build": "next build && npx @cloudflare/next-on-pages",
     "start": "next start",
     "lint": "eslint",
     "pages:build": "npx @cloudflare/next-on-pages",
@@ -26,6 +26,6 @@
     "eslint-config-next": "15.1.6",
     "tailwindcss": "^4",
     "typescript": "^5",
-    "wrangler": "^3.109.0"
+    "wrangler": "^3.114.17"
   }
 }
