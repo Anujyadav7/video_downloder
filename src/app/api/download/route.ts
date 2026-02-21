@@ -13,26 +13,27 @@ export async function POST(request: NextRequest) {
     if (isDev) {
       fetchResponse = await fetch("http://127.0.0.1:9000/", {
         method: "POST",
-        headers: { "Content-Type": "application/json", "Accept": "application/json" },
+        headers: { "Content-Type": "application/json" },
         body: JSON.stringify(cobaltBody),
       });
     } else {
       const ctx = getRequestContext();
       const env = ctx?.env as any;
-      const binding = env?.COBALT_SERVICE || env?.COBALT_WORKER;
+      const binding = env?.COBALT_SERVICE;
 
       if (!binding) return NextResponse.json({ error: "Infrastructure missing" }, { status: 500 });
 
-      const id = binding.idFromName("global-prod-relay-v7-final");
+      // Pointing to V8 Stable
+      const id = binding.idFromName("global-prod-relay-v8-final-stable");
       const stub = binding.get(id);
 
-      // Create a fresh request to strip any problematic headers (Referer, Host, etc.)
-      const cleanRequest = new Request("https://internal.gw", {
+      // Cleanest possible request to avoid 403 blocks
+      const cleanRequest = new Request("http://localhost-internal/", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
           "Accept": "application/json",
-          "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) Chrome/122.0.0.0 Safari/537.36"
+          "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) Chrome/123.0.0.0"
         },
         body: JSON.stringify(cobaltBody),
       });
@@ -42,14 +43,12 @@ export async function POST(request: NextRequest) {
 
     const responseText = await fetchResponse.text();
 
-    // Direct return - if it's JSON from Cobalt, user sees JSON. 
-    // If Cloudflare blocks it, we proxy the raw error so we know EXACTLY what's happening.
     return new Response(responseText, {
         status: fetchResponse.status,
         headers: { "Content-Type": "application/json" }
     });
 
   } catch (err: any) {
-    return NextResponse.json({ error: "Pipe Error", details: err.message }, { status: 500 });
+    return NextResponse.json({ error: "Sync Error", details: err.message }, { status: 500 });
   }
 }
