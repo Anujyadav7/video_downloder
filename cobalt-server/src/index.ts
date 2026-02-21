@@ -28,9 +28,10 @@ export class CobaltContainer extends DurableObject<Env> {
     // Cloudflare Containers share network namespace, so localhost works reliably
     const containerUrl = new URL(url.pathname + url.search, "http://localhost:8080");
 
-    // CRITICAL: Forward ALL Headers (User-Agent, Origin, Referer) to bypass blocks
+    // CRITICAL: Forward ALL Headers but delete Host to let runtime manage it
     const newHeaders = new Headers(request.headers);
-    newHeaders.set("Host", "localhost:8080"); // Set Host header for container
+    newHeaders.delete("Host"); 
+    newHeaders.set("Accept", "application/json");
     
     console.log(`[Proxy] Forwarding to: ${containerUrl.toString()}`);
     console.log(`[Proxy] Origin UA: ${request.headers.get("User-Agent")}`);
