@@ -4,14 +4,4 @@ compatibility_flags = ["nodejs_compat"]
 pages_build_output_dir = ".vercel/output/static"
 
 [vars]
-COBALT_API_URL = "http://cobalt-server:9000/api/json"
-
-# Cloudflare Containers Setup (Feb 2026 Standard)
-[containers]
-name = "cobalt-server"
-image = "ghcr.io/imputnet/cobalt:latest"
-
-# Internal Service Binding
-[[services]]
-binding = "COBALT_WORKER"
-service = "cobalt-server"
+COBALT_API_URL = "https://api.cobalt.tools/api/json"
