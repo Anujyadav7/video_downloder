@@ -3,162 +3,58 @@ import { getRequestContext } from "@cloudflare/next-on-pages";
 
 export const runtime = "edge";
 
-// --- Handle CORS Preflight ---
-export async function OPTIONS() {
-  return new NextResponse(null, {
-    status: 200,
-    headers: {
-      "Access-Control-Allow-Origin": "*",
-      "Access-Control-Allow-Methods": "POST, OPTIONS",
-      "Access-Control-Allow-Headers": "Content-Type",
-    },
-  });
-}
-
-// --- Main Handler ---
 export async function POST(request: NextRequest) {
   try {
-    const body = await request.json();
-    const { url, isAudioOnly } = body;
-    
-    console.log(`[Download] Processing: ${url}`);
+    const { url: videoUrl, isAudioOnly } = await request.json();
+    const ctx = getRequestContext();
+    const env = ctx.env as any;
 
-    // Robust Environment Check
-    const isLocal = process.env.NODE_ENV === 'development';
-    
-    // Extract Cloudflare Env
-    let env: any = null;
-    try {
-        const ctx = getRequestContext();
-        if (ctx && ctx.env) env = ctx.env;
-    } catch (e) { /* ignore */ }
-    if (!env) env = (request as any).env || (request as any).nextjs?.env || process.env;
-
-    const worker = env?.COBALT_WORKER;
-
-    // Security Headers (Crucial for bypassing Cloudflare 1003)
-    const securityHeaders = {
-        "Content-Type": "application/json",
-        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) Chrome/122.0.0.0",
-        "Origin": "https://video-downloder.pages.dev",
-        "Referer": "https://video-downloder.pages.dev/",
-        "Host": "cobalt-server.infoanuj74.workers.dev" 
-    };
-
-    const payload = JSON.stringify({ 
-        url, 
-        isAudioOnly,
-        filenameStyle: "pretty" 
-    });
-
-    let resultResponse: Response | null = null;
+    // 1. Environment Detection
+    const isDevelopment = process.env.NODE_ENV === 'development';
 
     // ---------------------------------------------------------
-    // 1. Localhost Logic (Public/Local Fallback)
+    // 2. Localhost Logic
     // ---------------------------------------------------------
-    if (isLocal) {
-        console.log("[Download] Localhost detected. Using local/public fallback.");
-        // Use COBALT_API_URL or default to localhost docker
-        const localTarget = env?.COBALT_API_URL || "http://localhost:9000/"; 
-        
-        try {
-            console.log(`[Download] Local Fetch: ${localTarget}`);
-            const res = await fetch(localTarget, {
-                method: "POST",
-                headers: { "Content-Type": "application/json", "Accept": "application/json" },
-                body: payload
-            });
-            if (res.ok) resultResponse = res;
-        } catch (e: any) {
-            console.warn(`[Download] Local fallback error: ${e.message}`);
-        }
+    if (isDevelopment) {
+      console.log("[Download] Dev Mode: Using localhost:9000");
+      const localResponse = await fetch("http://localhost:9000/api/json", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ url: videoUrl, filenameStyle: "pretty" })
+      });
+      const data = await localResponse.json();
+      return NextResponse.json(data);
     }
 
     // ---------------------------------------------------------
-    // 2. Production Logic (STRICT Service Binding)
+    // 3. Production Logic (Strict Service Binding)
     // ---------------------------------------------------------
-    else if (worker && typeof worker.fetch === 'function') {
-        console.log("[Download] Production detected. Using Service Binding: COBALT_WORKER");
-        try {
-            // Internal URL to trigger binding correctly
-            const workerReq = new Request("https://internal.cobalt/api/json", {
-                method: "POST",
-                headers: securityHeaders,
-                body: payload
-            });
+    if (env.COBALT_WORKER) {
+      console.log("[Download] Production Mode: Using Service Binding");
+      
+      const response = await env.COBALT_WORKER.fetch(new Request("https://internal.cobalt/api/json", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) Chrome/122.0.0.0",
+          "Host": "cobalt-server.infoanuj74.workers.dev", // Fixes Error 1003
+          "Origin": "https://video-downloder.pages.dev"
+        },
+        body: JSON.stringify({ 
+          url: videoUrl, 
+          filenameStyle: "pretty",
+          ...(isAudioOnly ? { isAudioOnly: true } : {})
+        })
+      }));
 
-            // 10s Timeout for Binding
-            const timeoutPromise = new Promise<Response>((_, reject) => 
-                setTimeout(() => reject(new Error("Service Binding Timeout (10s)")), 10000)
-            );
-
-            const res = await Promise.race([
-                worker.fetch(workerReq),
-                timeoutPromise
-            ]);
-            
-            if (res.ok) {
-                resultResponse = res;
-                console.log("[Download] Service Binding Success");
-            } else {
-                const txt = await res.text();
-                console.error(`[Download] Service Binding Failed (Strict): ${res.status} ${res.statusText}`);
-                console.error(`[Download] Error Body: ${txt}`);
-            }
-        } catch (e: any) {
-             console.error(`[Download] Service Binding Exception: ${e.message}`);
-        }
+      const data = await response.json();
+      return NextResponse.json(data);
     }
 
-    // ---------------------------------------------------------
-    // 3. Last Resort Fallback (Public Instances)
-    // ---------------------------------------------------------
-    if (!resultResponse && !isLocal) {
-        console.log("[Download] Primary Binding failed. Trying Public Fallbacks.");
-        const PUBLIC_INSTANCES = [
-          "https://api.cobalt.tools/api/json", 
-          "https://co.wuk.sh/api/json"
-        ];
-
-        for (const instance of PUBLIC_INSTANCES) {
-            try {
-                const controller = new AbortController();
-                const timeoutId = setTimeout(() => controller.abort(), 8000);
-                
-                const res = await fetch(instance, {
-                    method: "POST",
-                    headers: { "Content-Type": "application/json", "Accept": "application/json", "User-Agent": securityHeaders["User-Agent"] },
-                    body: payload,
-                    signal: controller.signal
-                });
-                clearTimeout(timeoutId);
-
-                if (res.ok) {
-                    resultResponse = res;
-                    break;
-                }
-            } catch (e) { /* ignore */ }
-        }
-    }
-
-    // ---------------------------------------------------------
-    // 4. Return Final Data
-    // ---------------------------------------------------------
-    if (resultResponse) {
-        const data = await resultResponse.json();
-        return NextResponse.json(data);
-    }
-
-    return NextResponse.json(
-        { error: "All providers failed (Binding & Public)" }, 
-        { status: 500 }
-    );
+    return NextResponse.json({ error: "Service Binding not found" }, { status: 500 });
 
   } catch (error: any) {
-    console.error("[Download] Critical Error:", error);
-    return NextResponse.json(
-      { error: "Internal Server Error", details: error.message },
-      { status: 500 }
-    );
+    console.error("[Download] Error:", error);
+    return NextResponse.json({ error: error.message }, { status: 500 });
   }
 }
