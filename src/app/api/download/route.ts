@@ -7,66 +7,69 @@ export async function POST(request: NextRequest) {
   const isDev = process.env.NODE_ENV === "development";
   
   try {
-    const body = await request.json();
-    const { url } = body;
+    const { url } = await request.json();
     if (!url) return NextResponse.json({ error: "URL is required" }, { status: 400 });
 
     const cobaltBody = { url, videoQuality: "1080", filenameStyle: "pretty" };
-    
-    // STRICT HEADERS FOR COBALT V10
-    const headers = { 
-      "Content-Type": "application/json",
-      "Accept": "application/json",
-      "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36"
-    };
-
     let fetchResponse: Response;
 
     if (isDev) {
-      // Direct Local Container
+      // Local is simple
       fetchResponse = await fetch("http://127.0.0.1:9000/", {
         method: "POST",
-        headers: headers,
+        headers: { "Content-Type": "application/json", "Accept": "application/json" },
         body: JSON.stringify(cobaltBody),
       });
     } else {
-      // Production Gateway (V5)
+      // PRODUCTION: Bypassing 1003 Error
       const ctx = getRequestContext();
       const env = ctx?.env as any;
       const binding = env?.COBALT_SERVICE || env?.COBALT_WORKER;
 
-      if (!binding) return NextResponse.json({ error: "Cloudflare Binding Missing" }, { status: 500 });
+      if (!binding) throw new Error("Infrastructure missing: COBALT_SERVICE not found.");
 
-      const id = binding.idFromName ? binding.idFromName("global-prod-relay-v5-stable") : null;
-      const target = id ? binding.get(id) : binding;
+      // Use a completely fresh identity v6 to break any 1003 stuck state
+      const id = binding.idFromName("global-prod-relay-v6-final");
+      const stub = binding.get(id);
 
-      fetchResponse = await target.fetch(new Request("https://internal.gateway/", {
+      /**
+       * CRITICAL FIX FOR 1003: 
+       * We strip ALL existing headers and only send what Cobalt needs.
+       * We use a dummy domain to satisfy the Request constructor without triggering WAF.
+       */
+      const internalRequest = new Request("https://api.internal/download", {
         method: "POST",
-        headers: headers,
+        headers: {
+          "Content-Type": "application/json",
+          "Accept": "application/json",
+          "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) Chrome/122.0.0.0 Safari/537.36"
+        },
         body: JSON.stringify(cobaltBody),
-      }));
+      });
+
+      fetchResponse = await stub.fetch(internalRequest);
     }
 
     const rawText = await fetchResponse.text();
     
-    // Guard against security blocks (HTML)
-    if (rawText.trim().startsWith("<!DOCTYPE") || rawText.includes("error code: 1003")) {
+    // If we still get 1003, it means the DO itself is blocked fetching the container
+    if (rawText.includes("error code: 1003") || rawText.trim().startsWith("<!DOCTYPE")) {
+        console.error("[Download] Critical 1003 Bypass failed. Raw:", rawText.slice(0, 100));
         return NextResponse.json({ 
-            error: "Security Blocked", 
-            message: "The backend returned HTML instead of JSON (1003 Error)."
+            status: "error", 
+            error: { 
+                code: "CLOUD_BLOCK", 
+                message: "Cloudflare is blocking internal communication. Please ensure Service Bindings are active." 
+            }
         }, { status: 502 });
     }
 
-    // Standard Success Block
-    try {
-        const data = JSON.parse(rawText);
-        // Ensure even error responses from Cobalt are parsed correctly
-        return NextResponse.json(data);
-    } catch (parseErr) {
-        return NextResponse.json({ error: "Parse Failure", raw: rawText.slice(0, 100) }, { status: 500 });
-    }
+    return new Response(rawText, {
+        status: fetchResponse.status,
+        headers: { "Content-Type": "application/json" }
+    });
 
   } catch (err: any) {
-    return NextResponse.json({ error: "Server Error", details: err.message }, { status: 500 });
+    return NextResponse.json({ error: "Gateway Error", details: err.message }, { status: 500 });
   }
 }
