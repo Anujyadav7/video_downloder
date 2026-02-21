@@ -4,12 +4,11 @@
   "private": true,
   "scripts": {
     "dev": "next dev",
-    "build": "next build",
+    "build": "next build && npx @cloudflare/next-on-pages",
     "start": "next start",
     "lint": "eslint",
-    "preview": "npm run pages:build && wrangler pages dev .vercel/output/static",
-    "deploy": "npm run pages:build && wrangler pages deploy .vercel/output/static",
-    "pages:build": "npx.cmd @cloudflare/next-on-pages"
+    "pages:build": "npx @cloudflare/next-on-pages",
+    "deploy": "npm run build && wrangler pages deploy .vercel/output/static"
   },
   "dependencies": {
     "lucide-react": "^0.562.0",
@@ -24,9 +23,9 @@
     "@types/react": "^19",
     "@types/react-dom": "^19",
     "eslint": "^9",
-    "eslint-config-next": "16.1.3",
+    "eslint-config-next": "15.1.6",
     "tailwindcss": "^4",
     "typescript": "^5",
-    "wrangler": "^4.67.0"
+    "wrangler": "^3.109.0"
   }
 }
