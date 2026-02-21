@@ -7,37 +7,27 @@ export async function POST(request: NextRequest) {
   const isDev = process.env.NODE_ENV === "development";
   
   try {
-    const { url } = await request.json();
-    if (!url) return NextResponse.json({ error: "URL is required" }, { status: 400 });
-
-    const cobaltBody = { url, videoQuality: "1080", filenameStyle: "pretty" };
+    const cobaltBody = await request.json();
     let fetchResponse: Response;
 
     if (isDev) {
-      // Local is simple
       fetchResponse = await fetch("http://127.0.0.1:9000/", {
         method: "POST",
         headers: { "Content-Type": "application/json", "Accept": "application/json" },
         body: JSON.stringify(cobaltBody),
       });
     } else {
-      // PRODUCTION: Bypassing 1003 Error
       const ctx = getRequestContext();
       const env = ctx?.env as any;
       const binding = env?.COBALT_SERVICE || env?.COBALT_WORKER;
 
-      if (!binding) throw new Error("Infrastructure missing: COBALT_SERVICE not found.");
+      if (!binding) return NextResponse.json({ error: "Infrastructure missing" }, { status: 500 });
 
-      // Use a completely fresh identity v6 to break any 1003 stuck state
-      const id = binding.idFromName("global-prod-relay-v6-final");
+      const id = binding.idFromName("global-prod-relay-v7-final");
       const stub = binding.get(id);
 
-      /**
-       * CRITICAL FIX FOR 1003: 
-       * We strip ALL existing headers and only send what Cobalt needs.
-       * We use a dummy domain to satisfy the Request constructor without triggering WAF.
-       */
-      const internalRequest = new Request("https://api.internal/download", {
+      // Create a fresh request to strip any problematic headers (Referer, Host, etc.)
+      const cleanRequest = new Request("https://internal.gw", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -47,29 +37,19 @@ export async function POST(request: NextRequest) {
         body: JSON.stringify(cobaltBody),
       });
 
-      fetchResponse = await stub.fetch(internalRequest);
+      fetchResponse = await stub.fetch(cleanRequest);
     }
 
-    const rawText = await fetchResponse.text();
-    
-    // If we still get 1003, it means the DO itself is blocked fetching the container
-    if (rawText.includes("error code: 1003") || rawText.trim().startsWith("<!DOCTYPE")) {
-        console.error("[Download] Critical 1003 Bypass failed. Raw:", rawText.slice(0, 100));
-        return NextResponse.json({ 
-            status: "error", 
-            error: { 
-                code: "CLOUD_BLOCK", 
-                message: "Cloudflare is blocking internal communication. Please ensure Service Bindings are active." 
-            }
-        }, { status: 502 });
-    }
+    const responseText = await fetchResponse.text();
 
-    return new Response(rawText, {
+    // Direct return - if it's JSON from Cobalt, user sees JSON. 
+    // If Cloudflare blocks it, we proxy the raw error so we know EXACTLY what's happening.
+    return new Response(responseText, {
         status: fetchResponse.status,
         headers: { "Content-Type": "application/json" }
     });
 
   } catch (err: any) {
-    return NextResponse.json({ error: "Gateway Error", details: err.message }, { status: 500 });
+    return NextResponse.json({ error: "Pipe Error", details: err.message }, { status: 500 });
   }
 }
