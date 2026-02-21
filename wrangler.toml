@@ -4,19 +4,14 @@ compatibility_flags = ["nodejs_compat"]
 pages_build_output_dir = ".vercel/output/static"
 
 [vars]
-# Global naming for the app
 APP_NAME = "FastVideoSave AI"
 ENVIRONMENT = "production"
 
-
-
 [[services]]
-# Direct binding to the backend worker for lightning-fast internal communication
 binding = "COBALT_WORKER"
 service = "cobalt-server"
 
 [[durable_objects.bindings]]
-# Durable Object binding for stateful container management
 name = "COBALT_SERVICE"
 class_name = "CobaltContainer"
 script_name = "cobalt-server"
