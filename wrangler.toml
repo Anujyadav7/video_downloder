@@ -4,7 +4,7 @@ compatibility_flags = ["nodejs_compat"]
 pages_build_output_dir = ".vercel/output/static"
 
 [vars]
-COBALT_API_URL = "https://cobalt-server.infoanuj74.workers.dev"
+COBALT_API_URL = "http://localhost:9000/api/json"
 
 [[services]]
 binding = "COBALT_WORKER"
