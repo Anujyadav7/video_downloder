@@ -2,6 +2,7 @@ import { DurableObject } from "cloudflare:workers";
 
 export interface Env {
   COBALT_SERVICE: DurableObjectNamespace<CobaltContainer>;
+  API_URL?: string;
 }
 
 export class CobaltContainer extends DurableObject<Env> {
@@ -12,36 +13,38 @@ export class CobaltContainer extends DurableObject<Env> {
   async fetch(request: Request): Promise<Response> {
     const url = new URL(request.url);
 
-    // Root / Health Check
-    if (url.pathname === "/" && request.method === "GET") {
-      return new Response(JSON.stringify({ status: "ok", service: "Cobalt Container Gateway" }), {
+    // GET / -> Health Check
+    if (request.method === "GET") {
+      return new Response(JSON.stringify({ status: "ok", message: "Cobalt Container Ready" }), {
         status: 200,
         headers: { "Content-Type": "application/json", "Access-Control-Allow-Origin": "*" }
       });
     }
 
-    // Proxy Logic - Target the root of the local container network
-    const containerUrl = new URL("/", "http://127.0.0.1:9000");
-    
-    // Use fresh headers to avoid carrying over Cloudflare internal headers that trigger 1003
+    // POST / -> Proxy to Container
+    // Use IP strictly to avoid localhost/IPv6 mismatch inside the worker runtime
+    const containerTarget = "http://127.0.0.1:9000/";
+
+    // EXTREME FIX for Error 1003: 
+    // Create a fresh set of headers to forward ONLY what's needed.
+    // Cloudflare internal headers from the binding call can trigger 1003 if they reach the container layer.
     const proxyHeaders = new Headers();
     proxyHeaders.set("Content-Type", "application/json");
     proxyHeaders.set("Accept", "application/json");
     proxyHeaders.set("User-Agent", request.headers.get("User-Agent") || "CobaltProxy/1.0");
 
     try {
-      const bodyText = await request.text();
-      console.log(`[DO] Proxying to: ${containerUrl.toString()}`);
+      const body = await request.text();
+      console.log(`[DO] Proxying request to container at ${containerTarget}`);
 
-      const response = await fetch(containerUrl.toString(), {
+      const response = await fetch(containerTarget, {
         method: "POST",
         headers: proxyHeaders,
-        body: bodyText
+        body: body
       });
 
       const responseText = await response.text();
 
-      // Return with proper CORS headers for the frontend
       return new Response(responseText, {
         status: response.status,
         headers: {
@@ -53,8 +56,8 @@ export class CobaltContainer extends DurableObject<Env> {
       });
 
     } catch (e: any) {
-      console.error(`[DO] Proxy Exception: ${e.message}`);
-      return new Response(JSON.stringify({ error: "Container Connection Refused", message: e.message }), { 
+      console.error(`[DO] Proxy Error: ${e.message}`);
+      return new Response(JSON.stringify({ error: "Internal Fetch Failed", details: e.message }), { 
         status: 502, 
         headers: { "Content-Type": "application/json", "Access-Control-Allow-Origin": "*" } 
       });
@@ -64,7 +67,7 @@ export class CobaltContainer extends DurableObject<Env> {
 
 export default {
   async fetch(request: Request, env: Env): Promise<Response> {
-    // Handle Preflight
+    // 1. Handle CORS Preflight
     if (request.method === "OPTIONS") {
       return new Response(null, {
         headers: {
@@ -75,15 +78,25 @@ export default {
       });
     }
 
+    // 2. Health check route
+    if (new URL(request.url).pathname === "/health") {
+      return new Response("OK", { status: 200 });
+    }
+
     try {
-      // Use a consistent ID for the global gateway
-      const id = env.COBALT_SERVICE.idFromName("cobalt-global-v1");
+      // 3. Forward to the Container-bound Durable Object
+      // Use a fixed name for the DO instance to ensure keep-alive performance
+      const id = env.COBALT_SERVICE.idFromName("global-v2");
       const stub = env.COBALT_SERVICE.get(id);
+      
+      // Perform the fetch on the stub
       return await stub.fetch(request);
+      
     } catch (e: any) {
-      return new Response(JSON.stringify({ error: "Worker Internal Error", details: e.message }), { 
-        status: 500, 
-        headers: { "Content-Type": "application/json", "Access-Control-Allow-Origin": "*" } 
+      console.error(`[Worker] Root Error: ${e.message}`);
+      return new Response(JSON.stringify({ error: "Worker Dispatch Error", details: e.message }), { 
+        status: 500,
+        headers: { "Content-Type": "application/json", "Access-Control-Allow-Origin": "*" }
       });
     }
   }

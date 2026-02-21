@@ -2,7 +2,9 @@
   "name": "cobalt-server",
   "main": "src/index.ts",
   "compatibility_date": "2026-02-21",
-  "compatibility_flags": ["nodejs_compat"],
+  "compatibility_flags": [
+    "nodejs_compat"
+  ],
   "durable_objects": {
     "bindings": [
       {
@@ -10,6 +12,11 @@
         "class_name": "CobaltContainer"
       }
     ]
+  },
+  "vars": {
+    "ENVIRONMENT": "production",
+    "API_PORT": "9000",
+    "CONTAINER_INSTANCE": "global-v10-main"
   },
   "containers": [
     {
@@ -20,7 +27,7 @@
       "memory": 1024,
       "environment": {
         "API_URL": "http://127.0.0.1:9000",
-        "API_NAME": "FastVideoSave",
+        "API_NAME": "FastVideoSave-Engine",
         "CORS_WILDCARD": "1"
       }
     }
@@ -28,7 +35,9 @@
   "migrations": [
     {
       "tag": "v1",
-      "new_sqlite_classes": ["CobaltContainer"]
+      "new_sqlite_classes": [
+        "CobaltContainer"
+      ]
     }
   ]
 }

@@ -115,7 +115,6 @@ export default function InputBox({ onDownload, type = "video" }: InputBoxProps) 
   // Verified Cobalt v10 mirrors + Private Worker + Localhost (Dev)
   const FALLBACK_INSTANCES = [
     ...(process.env.NODE_ENV === 'development' ? ["http://localhost:9000/"] : []),
-    "https://cobalt-server.infoanuj74.workers.dev/",
     "https://api.cobalt.tools/api/json",
     "https://co.wuk.sh/api/json",
     "https://sh.cobalt.tools/api/json"
