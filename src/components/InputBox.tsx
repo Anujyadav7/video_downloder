@@ -205,50 +205,39 @@ export default function InputBox({ onDownload, type = "video" }: InputBoxProps) 
       throw new Error(data.error || "Server download failed");
 
     } catch (serverErr: any) {
-      console.warn("Server-Side Download failed, switching to Client-Side Fallback:", serverErr.message);
+      console.warn("Server-Side API failed:", serverErr.message);
       
-      // 2. Try Client-Side Fallback (Direct Browser Fetch)
+      // 2. Client-Side Sequential Fallback
       let success = false;
       for (const instance of FALLBACK_INSTANCES) {
         try {
-            console.log(`Trying Client-Side: ${instance}`);
+            console.log(`Fallback Attempt: ${instance}`);
             const res = await fetch(instance, {
                 method: "POST",
                 mode: 'cors',
-                credentials: 'omit',
-                headers: { 
-                    "Accept": "application/json",
-                    "Content-Type": "application/json"
-                },
-                body: JSON.stringify({
-                    url: url
-                })
+                headers: { "Accept": "application/json", "Content-Type": "application/json" },
+                body: JSON.stringify({ url })
             });
 
-            // SAFETY CHECK: Cloudflare often returns HTML 530/1003/403 errors which crash .json()
-            const contentType = res.headers.get("content-type");
-            if (!contentType || !contentType.includes("application/json")) {
-                const text = await res.text();
-                // If HTML, it's likely a Cloudflare Block
-                if (text.includes("<!DOCTYPE html>")) {
-                   throw new Error(`Instance blocked (Cloudflare ${res.status})`);
-                }
-                throw new Error(`Invalid response format: ${text.substring(0, 50)}`);
+            const text = await res.text();
+            if (text.includes("error code: 1003") || text.includes("<!DOCTYPE")) {
+               console.warn(`Fallback ${instance} blocked by Cloudflare.`);
+               continue; 
             }
 
-            const data = await res.json();
-            if (data.status === "error" || data.status === "rate-limit") throw new Error(data.text);
+            const data = JSON.parse(text);
+            if (data.status === "error") throw new Error(data.text || "API Error");
             
-            await processData(data); // Reuse processing logic
+            await processData(data);
             success = true;
-            break; // Stop after success
+            break;
         } catch (e: any) {
-            console.log(`Client-Side Instance ${instance} failed:`, e.message);
+            console.error(`Fallback failed for ${instance}:`, e.message);
         }
       }
 
       if (!success) {
-          setError(serverErr.message || "Download failed. Please try again.");
+          setError("Download Failed. All providers (Server & Mirrors) are currently blocked. Please try again later.");
       }
     } finally {
       setLoading(false);

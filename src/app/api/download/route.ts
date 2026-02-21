@@ -9,65 +9,64 @@ export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
     const { url } = body;
-
-    if (!url) {
-      return NextResponse.json({ error: "URL is required" }, { status: 400 });
-    }
+    if (!url) return NextResponse.json({ error: "URL is required" }, { status: 400 });
 
     const cobaltBody = { url, videoQuality: "1080", filenameStyle: "pretty" };
+    
+    // STRICT HEADERS FOR COBALT V10
+    const headers = { 
+      "Content-Type": "application/json",
+      "Accept": "application/json",
+      "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36"
+    };
+
     let fetchResponse: Response;
 
     if (isDev) {
-      // Local Dev: Direct to docker bridge
+      // Direct Local Container
       fetchResponse = await fetch("http://127.0.0.1:9000/", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: headers,
         body: JSON.stringify(cobaltBody),
       });
     } else {
-      // Production: Direct Durable Object Binding Communication
+      // Production Gateway (V5)
       const ctx = getRequestContext();
       const env = ctx?.env as any;
-      const doNamespace = env?.COBALT_SERVICE;
+      const binding = env?.COBALT_SERVICE || env?.COBALT_WORKER;
 
-      if (!doNamespace) {
-        return NextResponse.json({ error: "Infrastructure Error", details: "COBALT_SERVICE binding missing." }, { status: 500 });
-      }
+      if (!binding) return NextResponse.json({ error: "Cloudflare Binding Missing" }, { status: 500 });
 
-      // Communication through the direct stub (No public IP access involved)
-      const id = doNamespace.idFromName("global-production-v1");
-      const stub = doNamespace.get(id);
+      const id = binding.idFromName ? binding.idFromName("global-prod-relay-v5-stable") : null;
+      const target = id ? binding.get(id) : binding;
 
-      fetchResponse = await stub.fetch(new Request("https://internal.local/", {
+      fetchResponse = await target.fetch(new Request("https://internal.gateway/", {
         method: "POST",
-        headers: { 
-          "Content-Type": "application/json",
-          "User-Agent": "Mozilla/5.0 (DownloadProxy/1.0)"
-        },
+        headers: headers,
         body: JSON.stringify(cobaltBody),
       }));
     }
 
     const rawText = await fetchResponse.text();
     
-    // JSON Safety Guard: Prevent parsing HTML (Error 1003 pages)
-    if (rawText.trim().startsWith("<!DOCTYPE") || rawText.includes("<html")) {
-        console.error("[Route] Backend returned HTML instead of JSON.");
+    // Guard against security blocks (HTML)
+    if (rawText.trim().startsWith("<!DOCTYPE") || rawText.includes("error code: 1003")) {
         return NextResponse.json({ 
-            error: "Internal Proxy Error", 
-            message: "The backend returned HTML instead of JSON" 
+            error: "Security Blocked", 
+            message: "The backend returned HTML instead of JSON (1003 Error)."
         }, { status: 502 });
     }
 
-    // Attempt to return the parsed JSON safely
+    // Standard Success Block
     try {
         const data = JSON.parse(rawText);
+        // Ensure even error responses from Cobalt are parsed correctly
         return NextResponse.json(data);
     } catch (parseErr) {
-        return NextResponse.json({ error: "Invalid JSON from Backend", raw: rawText.slice(0, 100) }, { status: 500 });
+        return NextResponse.json({ error: "Parse Failure", raw: rawText.slice(0, 100) }, { status: 500 });
     }
 
   } catch (err: any) {
-    return NextResponse.json({ error: "Major Handler Failure", details: err.message }, { status: 500 });
+    return NextResponse.json({ error: "Server Error", details: err.message }, { status: 500 });
   }
 }
