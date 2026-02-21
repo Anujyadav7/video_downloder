@@ -17,7 +17,7 @@ export class CobaltContainer extends DurableObject<Env> {
       return new Response(JSON.stringify({
         status: "ok",
         service: "Cobalt Gateway",
-        message: "API available at /api/json"
+        message: "API available at POST /"
       }), {
         status: 200,
         headers: { "Content-Type": "application/json", "Access-Control-Allow-Origin": "*" }
