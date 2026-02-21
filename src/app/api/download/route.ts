@@ -36,7 +36,7 @@ export async function POST(request: NextRequest) {
 
     const worker = env?.COBALT_WORKER;
 
-    // Headers with explicit Host to bypass 1003 (Direct IP Access)
+    // Security Headers (Crucial for bypassing Cloudflare 1003)
     const securityHeaders = {
         "Content-Type": "application/json",
         "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) Chrome/122.0.0.0",
@@ -52,57 +52,42 @@ export async function POST(request: NextRequest) {
     });
 
     let resultResponse: Response | null = null;
-    let usedMethod = "Unknown";
 
     // ---------------------------------------------------------
-    // 1. Localhost Logic (Public API Fallback)
+    // 1. Localhost Logic (Public/Local Fallback)
     // ---------------------------------------------------------
     if (isLocal) {
-        console.log("[Download] Localhost detected. Using configured API URL.");
-        
-        // Use the exact URL from env (e.g. http://127.0.0.1:9000/ for v10 or .../api/json for public)
-        // Default to v10 root behavior if not set
-        const localTarget = env?.COBALT_API_URL || "http://127.0.0.1:9000/"; 
+        console.log("[Download] Localhost detected. Using local/public fallback.");
+        // Use COBALT_API_URL or default to localhost docker
+        const localTarget = env?.COBALT_API_URL || "http://localhost:9000/"; 
         
         try {
             console.log(`[Download] Local Fetch: ${localTarget}`);
-            // Use simple headers for local/public to avoid Host mismatch
-            const localHeaders = { 
-                "Content-Type": "application/json", 
-                "Accept": "application/json" 
-            };
-            
             const res = await fetch(localTarget, {
                 method: "POST",
-                headers: localHeaders,
+                headers: { "Content-Type": "application/json", "Accept": "application/json" },
                 body: payload
             });
-            
-            if (res.ok) {
-                resultResponse = res;
-                usedMethod = "Localhost Fallback";
-            }
-            else console.warn(`[Download] Local fallback failed: ${res.status}`);
+            if (res.ok) resultResponse = res;
         } catch (e: any) {
             console.warn(`[Download] Local fallback error: ${e.message}`);
         }
     }
 
     // ---------------------------------------------------------
-    // 2. Production Logic (Service Binding)
+    // 2. Production Logic (STRICT Service Binding)
     // ---------------------------------------------------------
     else if (worker && typeof worker.fetch === 'function') {
-        console.log("[Download] Using Service Binding: COBALT_WORKER");
+        console.log("[Download] Production detected. Using Service Binding: COBALT_WORKER");
         try {
-            // Use internal URL with /api/json path to trigger the binding correctly
-            // with forced Host header to mimic public domain access
+            // Internal URL to trigger binding correctly
             const workerReq = new Request("https://internal.cobalt/api/json", {
                 method: "POST",
                 headers: securityHeaders,
                 body: payload
             });
 
-            // 10s Timeout
+            // 10s Timeout for Binding
             const timeoutPromise = new Promise<Response>((_, reject) => 
                 setTimeout(() => reject(new Error("Service Binding Timeout (10s)")), 10000)
             );
@@ -114,12 +99,10 @@ export async function POST(request: NextRequest) {
             
             if (res.ok) {
                 resultResponse = res;
-                usedMethod = "Service Binding";
                 console.log("[Download] Service Binding Success");
             } else {
                 const txt = await res.text();
-                // If 1003 or 530, treat as failure and fallback
-                console.error(`[Download] Service Binding Failed: ${res.status} ${res.statusText}`);
+                console.error(`[Download] Service Binding Failed (Strict): ${res.status} ${res.statusText}`);
                 console.error(`[Download] Error Body: ${txt}`);
             }
         } catch (e: any) {
@@ -131,11 +114,10 @@ export async function POST(request: NextRequest) {
     // 3. Last Resort Fallback (Public Instances)
     // ---------------------------------------------------------
     if (!resultResponse && !isLocal) {
-        console.log("[Download] Binding failed. Trying Public Fallbacks.");
+        console.log("[Download] Primary Binding failed. Trying Public Fallbacks.");
         const PUBLIC_INSTANCES = [
           "https://api.cobalt.tools/api/json", 
-          "https://co.wuk.sh/api/json",
-          "https://sh.cobalt.tools/api/json"
+          "https://co.wuk.sh/api/json"
         ];
 
         for (const instance of PUBLIC_INSTANCES) {
@@ -143,16 +125,9 @@ export async function POST(request: NextRequest) {
                 const controller = new AbortController();
                 const timeoutId = setTimeout(() => controller.abort(), 8000);
                 
-                // Use generic headers for public instances
-                const publicHeaders = {
-                    "Content-Type": "application/json",
-                    "Accept": "application/json",
-                    "User-Agent": securityHeaders["User-Agent"]
-                };
-
                 const res = await fetch(instance, {
                     method: "POST",
-                    headers: publicHeaders,
+                    headers: { "Content-Type": "application/json", "Accept": "application/json", "User-Agent": securityHeaders["User-Agent"] },
                     body: payload,
                     signal: controller.signal
                 });
@@ -167,7 +142,7 @@ export async function POST(request: NextRequest) {
     }
 
     // ---------------------------------------------------------
-    // 4. Final Response
+    // 4. Return Final Data
     // ---------------------------------------------------------
     if (resultResponse) {
         const data = await resultResponse.json();
