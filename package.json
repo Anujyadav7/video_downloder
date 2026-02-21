@@ -4,11 +4,11 @@
   "private": true,
   "scripts": {
     "dev": "next dev",
-    "build": "next build && npx @cloudflare/next-on-pages",
+    "build": "next build",
     "start": "next start",
     "lint": "eslint",
     "pages:build": "npx @cloudflare/next-on-pages",
-    "deploy": "npm run build && wrangler pages deploy .vercel/output/static"
+    "deploy": "npx @cloudflare/next-on-pages && wrangler pages deploy .vercel/output/static"
   },
   "dependencies": {
     "lucide-react": "^0.562.0",
