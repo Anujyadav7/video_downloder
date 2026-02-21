@@ -5,9 +5,13 @@ pages_build_output_dir = ".vercel/output/static"
 
 [vars]
 API_URL = "https://cobalt-server.infoanuj74.workers.dev"
+COBALT_API_URL = "https://cobalt-server.infoanuj74.workers.dev"
 COBALT_URL = "https://cobalt-server.infoanuj74.workers.dev"
 CORS_ALLOWED_ORIGINS = "https://video-downloder.pages.dev"
 NEXT_PUBLIC_SITE_URL = "https://video-downloder.pages.dev"
+
+compatibility_date = "2026-01-20"
+compatibility_flags = ["nodejs_compat"]
 
 [[services]]
 binding = "COBALT_WORKER"

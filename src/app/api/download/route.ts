@@ -39,7 +39,7 @@ export async function POST(request: NextRequest) {
     // Headers with explicit Host to bypass 1003 (Direct IP Access)
     const securityHeaders = {
         "Content-Type": "application/json",
-        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36",
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) Chrome/122.0.0.0",
         "Origin": "https://video-downloder.pages.dev",
         "Referer": "https://video-downloder.pages.dev/",
         "Host": "cobalt-server.infoanuj74.workers.dev" 
@@ -94,9 +94,9 @@ export async function POST(request: NextRequest) {
     else if (worker && typeof worker.fetch === 'function') {
         console.log("[Download] Using Service Binding: COBALT_WORKER");
         try {
-            // Use internal Root URL (matches v10 container behavior)
+            // Use internal URL with /api/json path to trigger the binding correctly
             // with forced Host header to mimic public domain access
-            const workerReq = new Request("https://internal.cobalt/", {
+            const workerReq = new Request("https://internal.cobalt/api/json", {
                 method: "POST",
                 headers: securityHeaders,
                 body: payload
