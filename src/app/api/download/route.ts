@@ -8,20 +8,30 @@ export async function POST(request: NextRequest) {
     const { url: videoUrl, isAudioOnly } = await request.json();
     
     // 1. Local Development Logic
-    // process.env.NODE_ENV is set by Next.js
     if (process.env.NODE_ENV === 'development') {
-      console.log("[Download] Dev Mode: Fetching from http://localhost:9000/api/json");
-      const localResponse = await fetch("http://localhost:9000/api/json", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ 
-          url: videoUrl, 
-          filenameStyle: "pretty",
-          ...(isAudioOnly ? { isAudioOnly: true } : {})
-        })
-      });
-      const data = await localResponse.json();
-      return NextResponse.json(data);
+      const localUrl = "http://127.0.0.1:9000/api/json";
+      console.log(`[Download] Dev Mode: Fetching from ${localUrl}`);
+      
+      try {
+        const localResponse = await fetch(localUrl, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ 
+            url: videoUrl, 
+            filenameStyle: "pretty",
+            ...(isAudioOnly ? { isAudioOnly: true } : {})
+          })
+        });
+        
+        const data = await localResponse.json();
+        return NextResponse.json(data);
+      } catch (err: any) {
+        console.error("[Download] Local Dev Error: Is the Cobalt server running on port 9000?", err.message);
+        return NextResponse.json({ 
+          error: "Local Server Unreachable", 
+          details: "Please ensure your local Cobalt server is running on http://127.0.0.1:9000" 
+        }, { status: 503 });
+      }
     }
 
     // 2. Production Logic (Durable Object Container Binding)
@@ -39,11 +49,9 @@ export async function POST(request: NextRequest) {
     console.log("[Download] Production Mode: Calling Durable Object stub");
 
     try {
-      // Get the Durable Object stub
       const id = env.COBALT_SERVICE.idFromName('global');
       const stub = env.COBALT_SERVICE.get(id);
 
-      // Perform the fetch directly on the Durable Object
       const response = await stub.fetch(new Request("https://internal.cobalt/api/json", {
         method: "POST",
         headers: {
@@ -58,17 +66,18 @@ export async function POST(request: NextRequest) {
         })
       }));
 
+      // Read raw text first for debugging HTML responses (requested by user)
       const responseText = await response.text();
+      console.log("[Download] Raw Backend Response:", responseText);
       
       if (!response.ok) {
-        console.error("[Download] DO Backend Error:", responseText);
         let errorData;
         try {
           errorData = JSON.parse(responseText);
         } catch (e) {
           return NextResponse.json({ 
             error: "Backend Service Error", 
-            details: `DO returned ${response.status}: ${responseText.slice(0, 200)}`
+            details: `Raw Response (Status ${response.status}): ${responseText.slice(0, 500)}`
           }, { status: response.status });
         }
         return NextResponse.json({ 
@@ -77,8 +86,17 @@ export async function POST(request: NextRequest) {
         }, { status: response.status });
       }
 
-      const data = JSON.parse(responseText);
-      return NextResponse.json(data);
+      // Parse JSON from the text we already read
+      try {
+        const data = JSON.parse(responseText);
+        return NextResponse.json(data);
+      } catch (parseErr) {
+        console.error("[Download] JSON Parse Error:", parseErr);
+        return NextResponse.json({ 
+          error: "JSON Parse Error", 
+          details: "Response was not valid JSON even though status was OK." 
+        }, { status: 500 });
+      }
 
     } catch (err: any) {
       console.error("[Download] Durable Object Fetch Exception:", err);

@@ -24,9 +24,8 @@ export class CobaltContainer extends DurableObject<Env> {
       });
     }
 
-    // Proxy Logic - Reverting to localhost
-    // Cloudflare Containers share network namespace, so localhost works reliably
-    const containerUrl = new URL(url.pathname + url.search, "http://localhost:8080");
+    // Cloudflare Containers share network namespace, so 127.0.0.1 works reliably
+    const containerUrl = new URL(url.pathname + url.search, "http://127.0.0.1:9000");
 
     // CRITICAL: Forward ALL Headers but delete Host to let runtime manage it
     const newHeaders = new Headers(request.headers);
@@ -34,7 +33,6 @@ export class CobaltContainer extends DurableObject<Env> {
     newHeaders.set("Accept", "application/json");
     
     console.log(`[Proxy] Forwarding to: ${containerUrl.toString()}`);
-    console.log(`[Proxy] Origin UA: ${request.headers.get("User-Agent")}`);
 
     const proxyRequest = new Request(containerUrl.toString(), {
       method: request.method,
@@ -44,26 +42,36 @@ export class CobaltContainer extends DurableObject<Env> {
     });
 
     try {
-      console.log(`[Proxy] Fetching upstream...`);
+      console.log(`[Proxy] Fetching upstream from container...`);
       const response = await fetch(proxyRequest);
-      console.log(`[Proxy] Upstream responded: ${response.status}`);
-
-      // CRITICAL FIX: Intercept Cloudflare 530/1003 errors from upstream
-      // These mean the container is unreachable, but fetch() returns them as valid responses.
-      if (response.status === 530 || response.status === 1003) {
-         return new Response(JSON.stringify({
-            status: "error",
-            code: "CONTAINER_CONNECTION_FAILED",
-            message: "The internal Cobalt container is unreachable (Status 530/1003). Please check Cloudflare logs."
-         }), {
-            status: 502,
-            headers: { "Content-Type": "application/json", "Access-Control-Allow-Origin": "*" }
-         });
+      
+      // Read response as text first to validate JSON and identify HTML errors
+      const responseText = await response.text();
+      
+      if (responseText.trim().startsWith("<!DOCTYPE html") || responseText.includes("<html")) {
+        console.error(`[Proxy] Received HTML instead of JSON: ${responseText.slice(0, 200)}`);
+        return new Response(JSON.stringify({
+          status: "error",
+          code: "UPSTREAM_HTML_ERROR",
+          message: "Upstream returned HTML (likely Error 1003/1016). Loop detected or container unreachable."
+        }), { 
+          status: 502, 
+          headers: { "Content-Type": "application/json", "Access-Control-Allow-Origin": "*" } 
+        });
       }
 
-      return this.corsResponse(response);
+      return new Response(responseText, {
+        status: response.status,
+        headers: { 
+          "Content-Type": "application/json", 
+          "Access-Control-Allow-Origin": "*",
+          "Access-Control-Allow-Methods": "POST, GET, OPTIONS",
+          "Access-Control-Allow-Headers": "Content-Type, Accept"
+        }
+      });
 
     } catch (e: any) {
+      console.error(`[Proxy] Connection failed: ${e.message}`);
       return new Response(JSON.stringify({ 
          status: "error",
          code: "PROXY_EXCEPTION",

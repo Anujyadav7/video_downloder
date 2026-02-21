@@ -19,7 +19,7 @@
       "cpu": 4,
       "memory": 1024,
       "environment": {
-        "API_URL": "http://localhost:8080",
+        "API_URL": "http://127.0.0.1:9000",
         "API_NAME": "FastVideoSave",
         "CORS_WILDCARD": "1"
       }
