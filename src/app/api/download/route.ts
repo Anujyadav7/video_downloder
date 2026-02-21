@@ -24,46 +24,69 @@ export async function POST(request: NextRequest) {
       return NextResponse.json(data);
     }
 
-    // 2. Production Logic (High-Performance Service Binding)
+    // 2. Production Logic (Durable Object Container Binding)
     const ctx = getRequestContext();
     const env = ctx.env as any;
 
-    if (!env || !env.COBALT_WORKER) {
-      console.error("[Download] Production Error: Service Binding 'COBALT_WORKER' is missing in Cloudflare Dashboard.");
+    if (!env || !env.COBALT_SERVICE) {
+      console.error("[Download] Production Error: Durable Object binding 'COBALT_SERVICE' is missing.");
       return NextResponse.json({ 
         error: "Configuration Error", 
-        details: "Service Binding 'COBALT_WORKER' not found. Please check your Cloudflare Pages settings." 
+        details: "Durable Object binding 'COBALT_SERVICE' not found. Please check your Cloudflare Pages settings." 
       }, { status: 500 });
     }
 
-    console.log("[Download] Production Mode: Using internal Service Binding");
+    console.log("[Download] Production Mode: Calling Durable Object stub");
 
-    // Internal request using the binding - Bypasses public DNS (Fixes Error 1003)
-    const response = await env.COBALT_WORKER.fetch(new Request("https://internal.cobalt/api/json", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        "Accept": "application/json",
-        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) Chrome/122.0.0.0"
-      },
-      body: JSON.stringify({ 
-        url: videoUrl, 
-        filenameStyle: "pretty",
-        ...(isAudioOnly ? { isAudioOnly: true } : {})
-      })
-    }));
+    try {
+      // Get the Durable Object stub
+      const id = env.COBALT_SERVICE.idFromName('global');
+      const stub = env.COBALT_SERVICE.get(id);
 
-    if (!response.ok) {
-      const errorData = await response.json().catch(() => ({ error: "Unknown backend error" }));
-      console.error("[Download] Backend Service Error:", errorData);
+      // Perform the fetch directly on the Durable Object
+      const response = await stub.fetch(new Request("https://internal.cobalt/api/json", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "Accept": "application/json",
+          "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) Chrome/122.0.0.0"
+        },
+        body: JSON.stringify({ 
+          url: videoUrl, 
+          filenameStyle: "pretty",
+          ...(isAudioOnly ? { isAudioOnly: true } : {})
+        })
+      }));
+
+      const responseText = await response.text();
+      
+      if (!response.ok) {
+        console.error("[Download] DO Backend Error:", responseText);
+        let errorData;
+        try {
+          errorData = JSON.parse(responseText);
+        } catch (e) {
+          return NextResponse.json({ 
+            error: "Backend Service Error", 
+            details: `DO returned ${response.status}: ${responseText.slice(0, 200)}`
+          }, { status: response.status });
+        }
+        return NextResponse.json({ 
+          error: "Backend Service Error", 
+          details: errorData.text || errorData.error || errorData.message || "DO error"
+        }, { status: response.status });
+      }
+
+      const data = JSON.parse(responseText);
+      return NextResponse.json(data);
+
+    } catch (err: any) {
+      console.error("[Download] Durable Object Fetch Exception:", err);
       return NextResponse.json({ 
-        error: "Backend Service Error", 
-        details: errorData.text || errorData.error || "The download service returned an error."
-      }, { status: response.status });
+        error: "Durable Object Exception", 
+        details: err.message 
+      }, { status: 502 });
     }
-
-    const data = await response.json();
-    return NextResponse.json(data);
 
   } catch (error: any) {
     console.error("[Download] Processing Error:", error);

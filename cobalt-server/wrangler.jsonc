@@ -1,7 +1,7 @@
 {
   "name": "cobalt-server",
   "main": "src/index.ts",
-  "compatibility_date": "2025-10-01",
+  "compatibility_date": "2026-02-21",
   "compatibility_flags": ["nodejs_compat"],
   "durable_objects": {
     "bindings": [
@@ -19,7 +19,7 @@
       "cpu": 4,
       "memory": 1024,
       "environment": {
-        "API_URL": "https://cobalt-server.infoanuj74.workers.dev/",
+        "API_URL": "http://localhost:9000",
         "API_NAME": "FastVideoSave",
         "CORS_WILDCARD": "1"
       }
