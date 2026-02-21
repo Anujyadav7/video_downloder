@@ -7,7 +7,7 @@ pages_build_output_dir = ".vercel/output/static"
 COBALT_API_URL = "http://cobalt-server:9000/api/json"
 
 # Cloudflare Containers Setup (Feb 2026 Standard)
-[[containers]]
+[containers]
 name = "cobalt-server"
 image = "ghcr.io/imputnet/cobalt:latest"
 
