@@ -8,58 +8,74 @@ export async function POST(request: NextRequest) {
   
   try {
     const cobaltBody = await request.json();
+    
+    // Stop retries if message is empty or invalid
+    if (!cobaltBody.url) {
+      return NextResponse.json({ status: "error", error: { code: "invalid.url" } }, { status: 400 });
+    }
+
     let fetchResponse: Response;
 
     if (isDev) {
+      // Local development fallback
       fetchResponse = await fetch("http://127.0.0.1:9000/", {
         method: "POST",
-        headers: { "Content-Type": "application/json", "Accept": "application/json" },
+        headers: { 
+          "Content-Type": "application/json", 
+          "Accept": "application/json" 
+        },
         body: JSON.stringify(cobaltBody),
       });
     } else {
       const ctx = getRequestContext();
       const env = ctx?.env as any;
-      const binding = env?.COBALT_SERVICE;
+      const worker = env?.COBALT_WORKER;
 
-      if (!binding) return NextResponse.json({ error: "Infrastructure missing", details: "COBALT_SERVICE binding not found." }, { status: 500 });
-
-      // V10 - Fresh identity to break any persistent 1003 blocks
-      const id = binding.idFromName("production-v10-final");
-      const stub = binding.get(id);
+      if (!worker) {
+        return NextResponse.json({ 
+          status: "error", 
+          error: { code: "binding.missing", message: "Internal Service Binding (COBALT_WORKER) not found." } 
+        }, { status: 500 });
+      }
 
       /**
-       * TO FIX 1003 ERROR:
-       * 1. Use a standard public-looking URL for the internal fetch.
-       * 2. DO NOT pass any headers from the original request.
-       * 3. Only send minimal JSON headers.
+       * INTERNAL FETCH via Service Binding
+       * Using an internal-only URL to prevent Cloudflare from intercepting 
+       * as a public request (avoids 1003 Direct Access error).
        */
-      fetchResponse = await stub.fetch("https://api.internal/download", {
+      fetchResponse = await worker.fetch("http://cobalt-internal/", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
           "Accept": "application/json",
-          "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) Chrome/123.0.0.0"
+          "User-Agent": "FastVideoSave-Internal/1.0"
         },
         body: JSON.stringify(cobaltBody),
       });
     }
 
-    const responseText = await fetchResponse.text();
-    
-    // If we get HTML (1003 error), return the raw HTML so we can debug it in the console
-    if (responseText.includes("error code: 1003") || responseText.trim().startsWith("<!DOCTYPE")) {
-        return new Response(responseText, {
-            status: 403,
-            headers: { "Content-Type": "text/html" }
-        });
+    // Safety check for non-JSON responses (WAF blocks etc)
+    const contentType = fetchResponse.headers.get("content-type");
+    if (!contentType || !contentType.includes("application/json")) {
+      const errorText = await fetchResponse.text();
+      console.error("[INTERNAL ERROR]", errorText);
+      return NextResponse.json({ 
+        status: "error", 
+        error: { 
+          code: "server.blocked", 
+          message: "Internal communication received non-JSON response. Check Cloudflare WAF/Service Bindings." 
+        } 
+      }, { status: 502 });
     }
 
-    return new Response(responseText, {
-        status: fetchResponse.status,
-        headers: { "Content-Type": "application/json" }
-    });
+    const data = await fetchResponse.json();
+    return NextResponse.json(data);
 
   } catch (err: any) {
-    return NextResponse.json({ error: "Gateway Fatal", details: err.message }, { status: 500 });
+    console.error("[GATEWAY FATAL]", err);
+    return NextResponse.json({ 
+      status: "error", 
+      error: { code: "gateway.fatal", message: err.message } 
+    }, { status: 500 });
   }
 }

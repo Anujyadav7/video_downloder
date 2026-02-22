@@ -10,22 +10,25 @@ export class CobaltContainer extends DurableObject<Env> {
   }
 
   async fetch(request: Request): Promise<Response> {
-    // Using localhost:9000 which is standard for Cloudflare Containers loopback
-    const containerTarget = `http://localhost:9000/`;
+    /**
+     * INTERNAL CONTAINER COMMUNICATION
+     * For Cloudflare Containers, the application inside the container 
+     * listens on localhost:9000 by default. This is internal DO traffic.
+     */
+    const containerTarget = `http://127.0.0.1:9000/`;
 
-    // STRIPPING EVERYTHING: To avoid 1003 internal policy blocks
-    const headers = new Headers();
-    headers.set("Content-Type", "application/json");
-    headers.set("Accept", "application/json");
-    headers.set("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) Chrome/123.0.0.0");
-    // Explicitly set host to local to avoid WAF interception
-    headers.set("Host", "localhost:9000");
+    // Strip external metadata to prevent Cloudflare 1003/403 blocks
+    const sanitizedHeaders = new Headers();
+    sanitizedHeaders.set("Content-Type", "application/json");
+    sanitizedHeaders.set("Accept", "application/json");
+    sanitizedHeaders.set("User-Agent", "FastVideoSave-Engine/1.0");
+    sanitizedHeaders.set("Host", "127.0.0.1:9000");
 
     try {
       const body = await request.text();
       const response = await fetch(containerTarget, {
         method: "POST",
-        headers: headers,
+        headers: sanitizedHeaders,
         body: body,
       });
 
@@ -33,30 +36,48 @@ export class CobaltContainer extends DurableObject<Env> {
       
       return new Response(responseText, {
         status: response.status,
-        headers: {
+        headers: { 
           "Content-Type": "application/json",
-          "Access-Control-Allow-Origin": "*",
+          "Access-Control-Allow-Origin": "*" 
         }
       });
     } catch (e: any) {
-      return new Response(JSON.stringify({ status: "error", message: e.message }), { status: 502 });
+      return new Response(JSON.stringify({ 
+        status: "error", 
+        error: { code: "container.unreachable", message: e.message } 
+      }), { status: 502 });
     }
   }
 }
 
 export default {
   async fetch(request: Request, env: Env): Promise<Response> {
+    /**
+     * SERVICE BINDING ENTRY POINT
+     * Internal requests coming from the Pages app via COBALT_WORKER.fetch()
+     * will arrive here. We route them directly to the Durable Object.
+     */
     if (request.method === "OPTIONS") {
-        return new Response(null, { headers: { "Access-Control-Allow-Origin": "*", "Access-Control-Allow-Methods": "POST, OPTIONS", "Access-Control-Allow-Headers": "*" } });
+        return new Response(null, { 
+          headers: { 
+            "Access-Control-Allow-Origin": "*", 
+            "Access-Control-Allow-Methods": "POST, OPTIONS", 
+            "Access-Control-Allow-Headers": "*" 
+          } 
+        });
     }
 
     try {
-      // V10 - Final Production Identity
-      const id = env.COBALT_SERVICE.idFromName("production-v10-final");
+      // Direct DO Routing to ensure persistent container state
+      const id = env.COBALT_SERVICE.idFromName("production-stable-v1");
       const stub = env.COBALT_SERVICE.get(id);
       return await stub.fetch(request);
     } catch (e: any) {
-      return new Response(JSON.stringify({ error: "Gateway Fatal" }), { status: 500 });
+      console.error("[SERVICE BINDING FATAL]", e);
+      return new Response(JSON.stringify({ 
+        status: "error", 
+        error: { code: "service.binding.error", message: e.message } 
+      }), { status: 500, headers: { "Content-Type": "application/json" } });
     }
   }
 };

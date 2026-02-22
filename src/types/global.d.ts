@@ -37,3 +37,14 @@ interface SpeechRecognitionAlternative {
   transcript: string;
   confidence: number;
 }
+
+// Cloudflare Environment Types for Next.js 15 Edge Runtime
+interface CloudflareEnv {
+  COBALT_WORKER: {
+    fetch: typeof fetch;
+  };
+  COBALT_SERVICE: {
+    idFromName(name: string): any;
+    get(id: any): any;
+  };
+}
