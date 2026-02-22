@@ -3,63 +3,93 @@ import { getRequestContext } from "@cloudflare/next-on-pages";
 
 export const runtime = "edge";
 
+/**
+ * Cobalt v10 Download Bridge (Feb 2026 Production)
+ * Strictly uses internal Service Bindings to bypass Cloudflare's public WAF.
+ */
 export async function POST(request: NextRequest) {
-  const isDev = process.env.NODE_ENV === "development" || request.headers.get("host")?.includes("localhost");
-
+  const isDev = process.env.NODE_ENV === "development";
+  
   try {
-    const rawBody = await request.json();
-    if (!rawBody.url) return NextResponse.json({ error: "No URL provided" }, { status: 400 });
+    const body = await request.json();
+    const url = body.url;
+
+    if (!url) {
+      return NextResponse.json({ status: "error", error: "URL is required" }, { status: 400 });
+    }
 
     const cobaltPayload = JSON.stringify({
-      url: rawBody.url,
+      url: url,
       videoQuality: "720",
       filenameStyle: "nerdy",
-      downloadMode: rawBody.mode || "auto"
+      downloadMode: body.mode || "auto"
     });
 
     let fetchResponse: Response;
 
     if (isDev) {
-      // Local remains IPv4 for Docker compatibility
+      // Local: Direct call to docker container
       fetchResponse = await fetch("http://127.0.0.1:9000/", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", "Accept": "application/json" },
+        body: cobaltPayload,
+      });
+    } else {
+      // Production: Strictly use the Service Binding (COBALT_WORKER)
+      const context = getRequestContext();
+      const env = context.env as any;
+      const worker = env.COBALT_WORKER;
+
+      if (!worker) {
+        return NextResponse.json({ 
+          status: "error", 
+          error: "Infrastructure Error: COBALT_WORKER binding not found." 
+        }, { status: 500 });
+      }
+
+      /**
+       * TO BYPASS 1003:
+       * We hit the service binding using a generic internal URL.
+       * We do NOT pass the original request object to prevent header leakage.
+       */
+      fetchResponse = await worker.fetch("http://cobalt.internal/api/json", {
         method: "POST",
         headers: { "Content-Type": "application/json", "Accept": "application/json" },
         body: cobaltPayload
       });
-    } else {
-      const ctx = getRequestContext();
-      const worker = (ctx?.env as any)?.COBALT_WORKER;
-
-      if (!worker) return NextResponse.json({ error: "Cloudflare Binding Failed" }, { status: 500 });
-
-      // AGGRESSIVE V17 STRIPPING: No Metadata, Browser Mimic
-      const cleanHeaders = new Headers();
-      cleanHeaders.set("Content-Type", "application/json");
-      cleanHeaders.set("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36");
-
-      fetchResponse = await worker.fetch("http://cobalt-v17.internal/", {
-        method: "POST",
-        headers: cleanHeaders,
-        body: cobaltPayload,
-        credentials: 'omit',
-        redirect: 'manual'
-      } as any);
     }
 
     const responseText = await fetchResponse.text();
-    
+
     try {
       const data = JSON.parse(responseText);
-      if (data.status === "error") return NextResponse.json({ error: data.text || "Bridge Error" }, { status: 502 });
+      
+      // Handle "error" status from Cobalt v10 or our worker
+      if (data.status === "error") {
+        return NextResponse.json(data, { status: 502 });
+      }
+
       return NextResponse.json(data);
     } catch (e) {
+      // If we see 1003 in the response text, it means the firewall blocked the bridge.
       if (responseText.includes("1003")) {
-          return NextResponse.json({ error: "Cloudflare Firewall Intercept (V17). Identity still leaking." }, { status: 502 });
+        return NextResponse.json({ 
+          status: "error", 
+          error: "Bridge Interception (1003). Please contact support." 
+        }, { status: 502 });
       }
-      return NextResponse.json({ error: "Non-JSON response received from bridge.", raw: responseText.slice(0, 50) }, { status: 502 });
+
+      return NextResponse.json({ 
+        status: "error", 
+        error: "Non-JSON response from backend engine." 
+      }, { status: 502 });
     }
 
   } catch (err: any) {
-    return NextResponse.json({ error: "Bridge Fatal", details: err.message }, { status: 500 });
+    // GRACEFUL ERROR HANDLING: Prevents frontend loops by returning a structured error.
+    return NextResponse.json({ 
+      status: "error", 
+      error: `Bridge Fatal: ${err.message}` 
+    }, { status: 500 });
   }
 }

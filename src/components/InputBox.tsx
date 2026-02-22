@@ -190,15 +190,18 @@ export default function InputBox({ onDownload, type = "video" }: InputBoxProps) 
       
       const data: CobaltResponse = await response.json();
       
-      if (response.ok && !data.error) {
+      if (response.ok && data.status !== "error") {
            await processData(data);
            return; // Success!
       }
       
-      throw new Error(data.error || "Server download failed");
+      // Explicitly catch bridge or container errors
+      const errorMsg = data.text || data.error || "Server bridge currently unavailable.";
+      throw new Error(errorMsg);
 
     } catch (serverErr: any) {
-      setError(serverErr.message || "Download failed. Please check your connection.");
+      console.error("[InputBox] Download Failed:", serverErr.message);
+      setError(serverErr.message);
     } finally {
       setLoading(false);
       setLoadingProgress(0);
