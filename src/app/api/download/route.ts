@@ -3,10 +3,6 @@ import { getRequestContext } from "@cloudflare/next-on-pages";
 
 export const runtime = "edge";
 
-/**
- * Cobalt v10 Server-Side Bridge (Feb 2026 Stable)
- * Explicitly optimized for v10 internal and local fetches.
- */
 export async function POST(request: NextRequest) {
   const isDev = process.env.NODE_ENV === "development" || request.headers.get("host")?.includes("localhost");
 
@@ -14,45 +10,36 @@ export async function POST(request: NextRequest) {
     const rawBody = await request.json();
     if (!rawBody.url) return NextResponse.json({ error: "No URL provided" }, { status: 400 });
 
-    const cobaltPayload = {
+    const cobaltPayload = JSON.stringify({
       url: rawBody.url,
       videoQuality: "720",
       filenameStyle: "nerdy",
       downloadMode: rawBody.mode || "auto"
-    };
+    });
 
     let fetchResponse: Response;
 
     if (isDev) {
-      /**
-       * LOCAL DEVELOPMENT
-       * Cobalt v10 MANDATES the 'Accept: application/json' header.
-       */
       fetchResponse = await fetch("http://127.0.0.1:9000/", {
         method: "POST",
-        headers: { 
-          "Content-Type": "application/json",
-          "Accept": "application/json" 
-        },
-        body: JSON.stringify(cobaltPayload)
+        headers: { "Content-Type": "application/json", "Accept": "application/json" },
+        body: cobaltPayload
       });
     } else {
       const ctx = getRequestContext();
-      const env = ctx?.env as any;
-      const worker = env?.COBALT_WORKER;
+      const worker = (ctx?.env as any)?.COBALT_WORKER;
 
-      if (!worker) {
-        return NextResponse.json({ error: "Cloudflare Binding (COBALT_WORKER) missing" }, { status: 500 });
-      }
+      if (!worker) return NextResponse.json({ error: "COBALT_WORKER Binding Missing" }, { status: 500 });
 
-      // Production fetch via Service Binding
-      fetchResponse = await worker.fetch("http://cobalt-service/", {
+      /**
+       * PURE DATA TUNNEL:
+       * Don't pass the original 'request' headers. 
+       * Only send what the backend strictly needs.
+       */
+      fetchResponse = await worker.fetch("http://tunnel.internal/", {
         method: "POST",
-        headers: { 
-          "Content-Type": "application/json",
-          "Accept": "application/json"
-        },
-        body: JSON.stringify(cobaltPayload)
+        headers: { "Content-Type": "application/json" },
+        body: cobaltPayload
       });
     }
 
@@ -60,15 +47,14 @@ export async function POST(request: NextRequest) {
     
     try {
       const data = JSON.parse(responseText);
-      if (data.status === "error") {
-          return NextResponse.json({ error: data.text || data.error?.code || "API Error" }, { status: 502 });
-      }
+      if (data.status === "error") return NextResponse.json({ error: data.text || "API Error" }, { status: 502 });
       return NextResponse.json(data);
     } catch (e) {
-      // Direct IP / 1003 check
-      if (responseText.includes("1003")) return NextResponse.json({ error: "Cloudflare Firewall Block (1003)" }, { status: 502 });
-      
-      return NextResponse.json({ error: "Non-JSON response from backend" }, { status: 502 });
+      // If we see 1003 in response, it means the worker failed to purge its own fetch
+      if (responseText.includes("1003")) {
+          return NextResponse.json({ error: "Internal Bridge Security Intercept (1003). Check Worker Logs." }, { status: 502 });
+      }
+      return NextResponse.json({ error: "Backend returned invalid response format" }, { status: 502 });
     }
 
   } catch (err: any) {
