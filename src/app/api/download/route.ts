@@ -3,6 +3,10 @@ import { getRequestContext } from "@cloudflare/next-on-pages";
 
 export const runtime = "edge";
 
+/**
+ * Cobalt v10 Clean-Tunnel Bridge (V16-Ultra-Clean Feb 2026)
+ * Strictly removes all metadata to bypass Cloudflare's Error 1003.
+ */
 export async function POST(request: NextRequest) {
   const isDev = process.env.NODE_ENV === "development" || request.headers.get("host")?.includes("localhost");
 
@@ -20,6 +24,7 @@ export async function POST(request: NextRequest) {
     let fetchResponse: Response;
 
     if (isDev) {
+      // Local development remains direct
       fetchResponse = await fetch("http://127.0.0.1:9000/", {
         method: "POST",
         headers: { "Content-Type": "application/json", "Accept": "application/json" },
@@ -29,33 +34,42 @@ export async function POST(request: NextRequest) {
       const ctx = getRequestContext();
       const worker = (ctx?.env as any)?.COBALT_WORKER;
 
-      if (!worker) return NextResponse.json({ error: "Infrastructure Error: COBALT_WORKER missing" }, { status: 500 });
+      if (!worker) return NextResponse.json({ error: "COBALT_WORKER Binding Missing" }, { status: 500 });
 
-      fetchResponse = await worker.fetch("http://tunnel.internal/", {
+      /**
+       * V16 AGGRESSIVE STRIPPING:
+       * We create a completely fresh Headers object.
+       * We MUST NOT pass any cf-* headers or x-forwarded-* headers.
+       */
+      const cleanHeaders = new Headers();
+      cleanHeaders.set("Content-Type", "application/json");
+      cleanHeaders.set("Accept", "application/json");
+
+      fetchResponse = await worker.fetch("http://cobalt.internal/", {
         method: "POST",
-        headers: { "Content-Type": "application/json", "Accept": "application/json" },
-        body: cobaltPayload
-      });
+        headers: cleanHeaders,
+        body: cobaltPayload,
+        // credentials: 'omit' is crucial in 2026 to prevent automatic identity leakage
+        credentials: 'omit',
+        redirect: 'manual'
+      } as any);
     }
 
     const responseText = await fetchResponse.text();
     
     try {
       const data = JSON.parse(responseText);
-      
-      // Improved Error Handling: Show what the engine actually said
-      if (data.status === "error") {
-          const detail = data.text || data.error?.message || data.error?.code || "Unknown Engine Error";
-          return NextResponse.json({ error: `Engine Response: ${detail}` }, { status: 502 });
-      }
-      
+      if (data.status === "error") return NextResponse.json({ error: data.text || "Backend Engine Error" }, { status: 502 });
       return NextResponse.json(data);
     } catch (e) {
-      // Direct 1003 check (should be gone now, but kept for safety)
-      if (responseText.includes("1003")) {
-          return NextResponse.json({ error: "Cloudflare Firewall (1003) still active on worker." }, { status: 502 });
+      // If we see 1003, it means the identity leak happened further down the pipe
+      if (responseText.includes("1003") || responseText.includes("Direct IP access")) {
+          return NextResponse.json({ 
+            status: "error", 
+            error: { code: "cloudflare.1003", message: "Clean-Tunnel intercept (1003). Identity leaking in Worker-Container bridge." } 
+          }, { status: 502 });
       }
-      return NextResponse.json({ error: "Backend sent non-JSON. Possible worker crash.", raw: responseText.slice(0, 100) }, { status: 502 });
+      return NextResponse.json({ error: "Backend sent non-JSON response.", raw: responseText.slice(0, 100) }, { status: 502 });
     }
 
   } catch (err: any) {
