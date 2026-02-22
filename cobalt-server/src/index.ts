@@ -11,31 +11,43 @@ export class CobaltContainer extends DurableObject<Env> {
 
   async fetch(request: Request): Promise<Response> {
     /**
-     * TO FIX 1003 (Direct IP Access Denied):
-     * We MUST use 'localhost' and explicitly set the Host header.
-     * We also skip any headers from the incoming request.
+     * V15 SOCKET BYPASS:
+     * Using 127.0.0.1:9000 is the most direct route.
+     * CRITICAL: We DO NOT pass any Host header. 
+     * Cloudflare internal container bridge handles authentication via service identity.
      */
-    const containerTarget = `http://localhost:9000/`;
+    const containerTarget = `http://127.0.0.1:9000/`;
 
     try {
-      const body = await request.text();
+      const body = await request.arrayBuffer(); // Use buffer to prevent encoding issues
+      
       const response = await fetch(containerTarget, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
           "Accept": "application/json",
-          "Host": "localhost" // Crucial for container loopback
+          "User-Agent": "Internal-DO-Relay"
         },
         body: body,
       });
 
       const responseText = await response.text();
+      
+      // If container itself returns 1003 (very rare but possible), we catch it
+      if (responseText.includes("1003")) {
+          throw new Error("Container Bridge Security Intercept");
+      }
+
       return new Response(responseText, {
         status: response.status,
         headers: { "Content-Type": "application/json" }
       });
     } catch (e: any) {
-      return new Response(JSON.stringify({ error: e.message }), { status: 502 });
+      console.error("[DO_FETCH_ERROR]", e.message);
+      return new Response(JSON.stringify({ 
+        status: "error", 
+        error: { code: "container.link.failure", message: e.message } 
+      }), { status: 502, headers: { "Content-Type": "application/json" } });
     }
   }
 }
@@ -44,25 +56,25 @@ export default {
   async fetch(request: Request, env: Env): Promise<Response> {
     try {
       /**
-       * AGGRESSIVE HEADER PURGING:
-       * If we pass the 'request' object directly, it carries CF-Ray and IP 
-       * headers from the browser which trigger the 1003 Firewall block.
+       * IDENTITY V15: Fresh ID to bypass old WAF session pools.
        */
-      const id = env.COBALT_SERVICE.idFromName("v14-final-clean");
+      const id = env.COBALT_SERVICE.idFromName("v15-production-clean");
       const stub = env.COBALT_SERVICE.get(id);
       
-      const body = await request.text();
+      const body = await request.arrayBuffer();
       
-      // We reconstruct a BARE-BONES request
-      const cleanInternalRequest = new Request("http://internal.tunnel/", {
+      // Bare minimum internal request
+      return await stub.fetch("http://do.internal/", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: body
       });
-
-      return await stub.fetch(cleanInternalRequest);
+      
     } catch (e: any) {
-      return new Response(JSON.stringify({ error: "Backend Worker Error", details: e.message }), { status: 500 });
+      return new Response(JSON.stringify({ 
+        status: "error", 
+        error: { code: "bridge.fatal", message: e.message } 
+      }), { status: 500, headers: { "Content-Type": "application/json" } });
     }
   }
 };

@@ -29,16 +29,12 @@ export async function POST(request: NextRequest) {
       const ctx = getRequestContext();
       const worker = (ctx?.env as any)?.COBALT_WORKER;
 
-      if (!worker) return NextResponse.json({ error: "COBALT_WORKER Binding Missing" }, { status: 500 });
+      if (!worker) return NextResponse.json({ error: "Infrastructure Error: COBALT_WORKER missing" }, { status: 500 });
 
-      /**
-       * PURE DATA TUNNEL:
-       * Don't pass the original 'request' headers. 
-       * Only send what the backend strictly needs.
-       */
+      // Production: Clean tunnel fetch
       fetchResponse = await worker.fetch("http://tunnel.internal/", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: { "Content-Type": "application/json", "Accept": "application/json" },
         body: cobaltPayload
       });
     }
@@ -47,17 +43,20 @@ export async function POST(request: NextRequest) {
     
     try {
       const data = JSON.parse(responseText);
-      if (data.status === "error") return NextResponse.json({ error: data.text || "API Error" }, { status: 502 });
+      if (data.status === "error") return NextResponse.json({ error: data.text || "Backend Engine Error" }, { status: 502 });
       return NextResponse.json(data);
     } catch (e) {
-      // If we see 1003 in response, it means the worker failed to purge its own fetch
+      // Direct 1003 check
       if (responseText.includes("1003")) {
-          return NextResponse.json({ error: "Internal Bridge Security Intercept (1003). Check Worker Logs." }, { status: 502 });
+          return NextResponse.json({ 
+            status: "error", 
+            error: { code: "cloudflare.1003", message: "Cloudflare Bridge Blocked. Try reloading in 10 seconds." } 
+          }, { status: 502 });
       }
-      return NextResponse.json({ error: "Backend returned invalid response format" }, { status: 502 });
+      return NextResponse.json({ error: "Backend sent non-JSON response." }, { status: 502 });
     }
 
   } catch (err: any) {
-    return NextResponse.json({ error: "Bridge Error", message: err.message }, { status: 500 });
+    return NextResponse.json({ error: "Internal Gateway Error", details: err.message }, { status: 500 });
   }
 }
