@@ -3,10 +3,6 @@ import { getRequestContext } from "@cloudflare/next-on-pages";
 
 export const runtime = "edge";
 
-/**
- * Cobalt v10 Clean-Tunnel Bridge (V16-Ultra-Clean Feb 2026)
- * Strictly removes all metadata to bypass Cloudflare's Error 1003.
- */
 export async function POST(request: NextRequest) {
   const isDev = process.env.NODE_ENV === "development" || request.headers.get("host")?.includes("localhost");
 
@@ -24,7 +20,7 @@ export async function POST(request: NextRequest) {
     let fetchResponse: Response;
 
     if (isDev) {
-      // Local development remains direct
+      // Local remains IPv4 for Docker compatibility
       fetchResponse = await fetch("http://127.0.0.1:9000/", {
         method: "POST",
         headers: { "Content-Type": "application/json", "Accept": "application/json" },
@@ -34,22 +30,17 @@ export async function POST(request: NextRequest) {
       const ctx = getRequestContext();
       const worker = (ctx?.env as any)?.COBALT_WORKER;
 
-      if (!worker) return NextResponse.json({ error: "COBALT_WORKER Binding Missing" }, { status: 500 });
+      if (!worker) return NextResponse.json({ error: "Cloudflare Binding Failed" }, { status: 500 });
 
-      /**
-       * V16 AGGRESSIVE STRIPPING:
-       * We create a completely fresh Headers object.
-       * We MUST NOT pass any cf-* headers or x-forwarded-* headers.
-       */
+      // AGGRESSIVE V17 STRIPPING: No Metadata, Browser Mimic
       const cleanHeaders = new Headers();
       cleanHeaders.set("Content-Type", "application/json");
-      cleanHeaders.set("Accept", "application/json");
+      cleanHeaders.set("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36");
 
-      fetchResponse = await worker.fetch("http://cobalt.internal/", {
+      fetchResponse = await worker.fetch("http://cobalt-v17.internal/", {
         method: "POST",
         headers: cleanHeaders,
         body: cobaltPayload,
-        // credentials: 'omit' is crucial in 2026 to prevent automatic identity leakage
         credentials: 'omit',
         redirect: 'manual'
       } as any);
@@ -59,20 +50,16 @@ export async function POST(request: NextRequest) {
     
     try {
       const data = JSON.parse(responseText);
-      if (data.status === "error") return NextResponse.json({ error: data.text || "Backend Engine Error" }, { status: 502 });
+      if (data.status === "error") return NextResponse.json({ error: data.text || "Bridge Error" }, { status: 502 });
       return NextResponse.json(data);
     } catch (e) {
-      // If we see 1003, it means the identity leak happened further down the pipe
-      if (responseText.includes("1003") || responseText.includes("Direct IP access")) {
-          return NextResponse.json({ 
-            status: "error", 
-            error: { code: "cloudflare.1003", message: "Clean-Tunnel intercept (1003). Identity leaking in Worker-Container bridge." } 
-          }, { status: 502 });
+      if (responseText.includes("1003")) {
+          return NextResponse.json({ error: "Cloudflare Firewall Intercept (V17). Identity still leaking." }, { status: 502 });
       }
-      return NextResponse.json({ error: "Backend sent non-JSON response.", raw: responseText.slice(0, 100) }, { status: 502 });
+      return NextResponse.json({ error: "Non-JSON response received from bridge.", raw: responseText.slice(0, 50) }, { status: 502 });
     }
 
   } catch (err: any) {
-    return NextResponse.json({ error: "Internal Gateway Error", details: err.message }, { status: 500 });
+    return NextResponse.json({ error: "Bridge Fatal", details: err.message }, { status: 500 });
   }
 }
