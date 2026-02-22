@@ -188,32 +188,51 @@ export default function InputBox({ onDownload, type = "video" }: InputBoxProps) 
         body: JSON.stringify({ url, mode: type === 'audio' ? 'audio' : 'auto' }),
       });
       
-      const data: CobaltResponse = await response.json();
-      
-      if (response.ok && data.status !== "error") {
-           await processData(data);
-           return; 
-      }
-      
-      // Extract a human-readable string from the error response
       let errorMsg = "Server bridge currently unavailable.";
-      if (typeof data.text === 'string') {
-        errorMsg = data.text;
-      } else if (data.error) {
-        if (typeof data.error === 'string') {
-          errorMsg = data.error;
-        } else if (typeof (data.error as any).message === 'string') {
-          errorMsg = (data.error as any).message;
-        } else if (typeof (data.error as any).code === 'string') {
-          errorMsg = (data.error as any).code;
+
+      try {
+        const data: CobaltResponse = await response.json();
+        
+        if (response.ok && data.status !== "error") {
+             await processData(data);
+             return; 
         }
+
+        // Normalize Cobalt v10 error format
+        if (typeof data.text === 'string') {
+            errorMsg = data.text;
+        } else if (data.error) {
+            if (typeof data.error === 'string') {
+                errorMsg = data.error;
+            } else if (typeof data.error === 'object') {
+                const errObj = data.error as any;
+                errorMsg = errObj.message || errObj.code || JSON.stringify(errObj);
+            }
+        }
+      } catch (jsonErr) {
+          errorMsg = "Critical: Backend returned invalid response format.";
       }
       
       throw new Error(errorMsg);
 
     } catch (serverErr: any) {
       console.error("[InputBox] Download Failed:", serverErr);
-      setError(serverErr.message || "An unexpected error occurred.");
+      
+      // Robust error string extraction
+      let finalError: string;
+      if (typeof serverErr === 'string') {
+          finalError = serverErr;
+      } else if (serverErr instanceof Error) {
+          finalError = serverErr.message;
+      } else {
+          try {
+              finalError = JSON.stringify(serverErr);
+          } catch {
+              finalError = "An unknown connection error occurred.";
+          }
+      }
+      
+      setError(finalError || "Download failed. Please try again.");
     } finally {
       setLoading(false);
       setLoadingProgress(0);
@@ -271,9 +290,19 @@ export default function InputBox({ onDownload, type = "video" }: InputBoxProps) 
 
       } catch (err: any) {
           console.error("Transcription Error:", err);
-          setScript(`[Error: ${err.message}]`);
+          
+          let errorMsg = "Transcription encountered a problem.";
+          if (typeof err === 'string') {
+              errorMsg = err;
+          } else if (err instanceof Error) {
+              errorMsg = err.message;
+          } else {
+              try { errorMsg = JSON.stringify(err); } catch { }
+          }
+          
+          setScript(`[Error: ${errorMsg}]`);
           setTranscribeProgress(0);
-          setError(err.message);
+          setError(errorMsg);
       } finally {
           clearInterval(interval);
           setTranscribing(false);
