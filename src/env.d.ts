@@ -4,7 +4,10 @@ declare namespace NodeJS {
     COBALT_WORKER: {
       fetch: (request: Request | string, init?: RequestInit) => Promise<Response>;
     };
+    COBALT_SERVICE: any;
     GROQ_API_KEY: string;
+    PROXY_URL: string;
+    PROXY_AUTH: string;
   }
 }
 
@@ -16,6 +19,8 @@ declare module "@cloudflare/next-on-pages" {
       };
       COBALT_SERVICE: any;
       GROQ_API_KEY: string;
+      PROXY_URL: string;
+      PROXY_AUTH: string;
     };
   };
 }

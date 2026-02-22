@@ -3,13 +3,12 @@ compatibility_date = "2026-02-21"
 compatibility_flags = ["nodejs_compat"]
 pages_build_output_dir = ".vercel/output/static"
 
-[vars]
-ENVIRONMENT = "production"
-
+# Service Binding: Connects Pages to the Backend Worker
 [[services]]
 binding = "COBALT_WORKER"
 service = "cobalt-server"
 
+# Durable Object Binding: Allows Pages to talk to the Cobalt Container directly
 [[durable_objects.bindings]]
 name = "COBALT_SERVICE"
 class_name = "CobaltContainer"

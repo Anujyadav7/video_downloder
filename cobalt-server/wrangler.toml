@@ -11,10 +11,10 @@ bindings = [
 [vars]
 ENVIRONMENT = "production"
 API_PORT = "9000"
-API_URL = "http://127.0.0.1:9000"
-API_NAME = "FastVideoSave-Engine"
-CORS_WILDCARD = "1"
-# Webshare Rotating Proxy (Production extraction)
+# User-Requested Proxy Variables
+PROXY_URL = "http://p.webshare.io:80"
+PROXY_AUTH = "xcjkkris-rotate:e8pk5mmdnsgt"
+# Standard Engine Proxy
 API_EXTERNAL_PROXY = "http://xcjkkris-rotate:e8pk5mmdnsgt@p.webshare.io:80"
 
 [[containers]]
