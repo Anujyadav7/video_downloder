@@ -31,7 +31,6 @@ export async function POST(request: NextRequest) {
 
       if (!worker) return NextResponse.json({ error: "Infrastructure Error: COBALT_WORKER missing" }, { status: 500 });
 
-      // Production: Clean tunnel fetch
       fetchResponse = await worker.fetch("http://tunnel.internal/", {
         method: "POST",
         headers: { "Content-Type": "application/json", "Accept": "application/json" },
@@ -43,17 +42,20 @@ export async function POST(request: NextRequest) {
     
     try {
       const data = JSON.parse(responseText);
-      if (data.status === "error") return NextResponse.json({ error: data.text || "Backend Engine Error" }, { status: 502 });
+      
+      // Improved Error Handling: Show what the engine actually said
+      if (data.status === "error") {
+          const detail = data.text || data.error?.message || data.error?.code || "Unknown Engine Error";
+          return NextResponse.json({ error: `Engine Response: ${detail}` }, { status: 502 });
+      }
+      
       return NextResponse.json(data);
     } catch (e) {
-      // Direct 1003 check
+      // Direct 1003 check (should be gone now, but kept for safety)
       if (responseText.includes("1003")) {
-          return NextResponse.json({ 
-            status: "error", 
-            error: { code: "cloudflare.1003", message: "Cloudflare Bridge Blocked. Try reloading in 10 seconds." } 
-          }, { status: 502 });
+          return NextResponse.json({ error: "Cloudflare Firewall (1003) still active on worker." }, { status: 502 });
       }
-      return NextResponse.json({ error: "Backend sent non-JSON response." }, { status: 502 });
+      return NextResponse.json({ error: "Backend sent non-JSON. Possible worker crash.", raw: responseText.slice(0, 100) }, { status: 502 });
     }
 
   } catch (err: any) {
