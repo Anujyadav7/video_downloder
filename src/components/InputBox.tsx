@@ -111,14 +111,7 @@ export default function InputBox({ onDownload, type = "video" }: InputBoxProps) 
     } catch (e) { console.error(e); }
   };
 
-  // Client-Side Fallback Instances
-  // Verified Cobalt v10 mirrors + Private Worker + Localhost (Dev)
-  const FALLBACK_INSTANCES = [
-    ...(process.env.NODE_ENV === 'development' ? ["http://localhost:9000/"] : []),
-    "https://api.cobalt.tools/api/json",
-    "https://co.wuk.sh/api/json",
-    "https://sh.cobalt.tools/api/json"
-  ];
+
 
   const handleDownload = async (e: React.FormEvent, reqMode: "auto" | "audio" = "auto") => {
     e.preventDefault();
@@ -205,40 +198,7 @@ export default function InputBox({ onDownload, type = "video" }: InputBoxProps) 
       throw new Error(data.error || "Server download failed");
 
     } catch (serverErr: any) {
-      console.warn("Server-Side API failed:", serverErr.message);
-      
-      // 2. Client-Side Sequential Fallback
-      let success = false;
-      for (const instance of FALLBACK_INSTANCES) {
-        try {
-            console.log(`Fallback Attempt: ${instance}`);
-            const res = await fetch(instance, {
-                method: "POST",
-                mode: 'cors',
-                headers: { "Accept": "application/json", "Content-Type": "application/json" },
-                body: JSON.stringify({ url })
-            });
-
-            const text = await res.text();
-            if (text.includes("error code: 1003") || text.includes("<!DOCTYPE")) {
-               console.warn(`Fallback ${instance} blocked by Cloudflare.`);
-               continue; 
-            }
-
-            const data = JSON.parse(text);
-            if (data.status === "error") throw new Error(data.text || "API Error");
-            
-            await processData(data);
-            success = true;
-            break;
-        } catch (e: any) {
-            console.error(`Fallback failed for ${instance}:`, e.message);
-        }
-      }
-
-      if (!success) {
-          setError("Download Failed. All providers (Server & Mirrors) are currently blocked. Please try again later.");
-      }
+      setError(serverErr.message || "Download failed. Please check your connection.");
     } finally {
       setLoading(false);
       setLoadingProgress(0);

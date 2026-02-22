@@ -10,22 +10,13 @@ export class CobaltContainer extends DurableObject<Env> {
   }
 
   async fetch(request: Request): Promise<Response> {
-    /**
-     * DUAL LOCALHOST BYPASS:
-     * Using 'localhost' instead of '127.0.0.1' often bypasses the 1003 check
-     * because it's treated as a named loopback rather than a direct IP access.
-     */
-    const containerTarget = `http://localhost:9000/`;
+    const containerTarget = `http://127.0.0.1:9000/`;
 
     try {
       const body = await request.text();
       const response = await fetch(containerTarget, {
         method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          "Accept": "application/json",
-          "Host": "localhost" // Force host to localhost to keep it internal
-        },
+        headers: { "Content-Type": "application/json" }, // Bare minimum headers
         body: body,
       });
 
@@ -42,25 +33,12 @@ export class CobaltContainer extends DurableObject<Env> {
 
 export default {
   async fetch(request: Request, env: Env): Promise<Response> {
-    // Pure internal routing
     try {
-      const id = env.COBALT_SERVICE.idFromName("v11-ultra-stable");
+      const id = env.COBALT_SERVICE.idFromName("v1"); // Simplified ID
       const stub = env.COBALT_SERVICE.get(id);
-      
-      /**
-       * We MUST create a fresh request here too. 
-       * Service bindings can carry 'suspicious' metadata from the edge.
-       */
-      const body = await request.text();
-      const cleanRequest = new Request(request.url, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: body
-      });
-      
-      return await stub.fetch(cleanRequest);
+      return await stub.fetch(request);
     } catch (e: any) {
-      return new Response(JSON.stringify({ error: "Internal DO Error" }), { status: 500 });
+      return new Response(JSON.stringify({ error: "Backend Worker Error" }), { status: 500 });
     }
   }
 };

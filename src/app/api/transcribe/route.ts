@@ -6,58 +6,56 @@ export const maxDuration = 45;
 
 const GROQ_API_URL = "https://api.groq.com/openai/v1/audio/transcriptions";
 
+/**
+ * Transcription Route - Optimized for Cloudflare & Hinglish
+ */
 export async function POST(request: NextRequest) {
-  const isDev = process.env.NODE_ENV === "development";
+  const isDev = process.env.NODE_ENV === "development" || request.headers.get("host")?.includes("localhost");
   
   try {
     const { url } = await request.json();
     if (!url) return NextResponse.json({ error: "Media URL is required" }, { status: 400 });
 
-    const cobaltHeaders = { 
-        "Content-Type": "application/json",
-        "Accept": "application/json",
-        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36"
+    const cobaltPayload = {
+      url: url,
+      videoQuality: "720",
+      filenameStyle: "nerdy"
     };
-    
-    // Cobalt Extraction Body - Using Standard Video mode as it's more stable for Instagram extraction
-    const cobaltBody = { url, videoQuality: "720" };
 
     let mediaUrl: string | null = null;
 
-    // --- 1. MEDIA EXTRACTION ---
+    // --- 1. MEDIA EXTRACTION (Using Internal Bridge) ---
     try {
         let cobaltResponse: Response;
         if (isDev) {
             cobaltResponse = await fetch("http://127.0.0.1:9000/", {
                 method: "POST",
-                headers: cobaltHeaders,
-                body: JSON.stringify(cobaltBody),
+                headers: { "Content-Type": "application/json", "Accept": "application/json" },
+                body: JSON.stringify(cobaltPayload),
             });
         } else {
             const ctx = getRequestContext();
             const env = ctx?.env as any;
-            const binding = env?.COBALT_SERVICE || env?.COBALT_WORKER;
-            if (!binding) throw new Error("Service Binding Missing");
+            const worker = env?.COBALT_WORKER;
+            if (!worker) throw new Error("Service Binding (COBALT_WORKER) Missing");
             
-            const id = binding.idFromName ? binding.idFromName("global-prod-relay-v5-stable") : null;
-            const target = id ? binding.get(id) : binding;
-            
-            cobaltResponse = await target.fetch(new Request("https://internal.gateway/", {
+            // Internal fetch to resolve the direct media link
+            cobaltResponse = await worker.fetch("http://cobalt-service/api/json", {
                 method: "POST",
-                headers: cobaltHeaders,
-                body: JSON.stringify(cobaltBody),
-            }));
+                headers: { "Content-Type": "application/json", "Accept": "application/json" },
+                body: JSON.stringify(cobaltPayload),
+            });
         }
 
         const data = await cobaltResponse.json() as any;
         mediaUrl = data.url || data.audio || (data.picker?.[0]?.url);
         
         if (!mediaUrl && data.status === "error") {
-            throw new Error(`Engine Error: ${data.error?.code || 'COBALT_FAIL'}`);
+            throw new Error(`Engine Error: ${data.text || 'COBALT_FAIL'}`);
         }
     } catch (e: any) {
-        console.error("[Transcribe] Cobalt Link Failed:", e.message);
-        return NextResponse.json({ error: "Could not retrieve media link.", details: e.message }, { status: 502 });
+        console.error("[Transcribe] Extraction Failed:", e.message);
+        return NextResponse.json({ error: "Media extraction failed.", details: e.message }, { status: 502 });
     }
 
     if (!mediaUrl) return NextResponse.json({ error: "No direct media link found." }, { status: 422 });
@@ -76,7 +74,8 @@ export async function POST(request: NextRequest) {
     const formData = new FormData();
     formData.append("file", new Blob([audioBuffer], { type: "audio/mp3" }), "audio.mp3");
     formData.append("model", "whisper-large-v3");
-    formData.append("prompt", "Transcribe exactly as spoken in the audio.");
+    // STICKY HINGLISH PROMPT: Pure Roman Script, No Devanagari
+    formData.append("prompt", "Transcribe this audio strictly into Hinglish (Hindi + English mix) using only Roman script (English alphabet). Do not use Devanagari or Hindi script. Example style: 'Yaar mere profession ka naam...'. Ensure every word is in English characters.");
     formData.append("response_format", "json");
 
     const groqResponse = await fetch(GROQ_API_URL, {
