@@ -1,4 +1,4 @@
-name = "video-downloader-app"
+name = "video-downloder"
 compatibility_date = "2026-02-21"
 compatibility_flags = ["nodejs_compat"]
 pages_build_output_dir = ".vercel/output/static"
