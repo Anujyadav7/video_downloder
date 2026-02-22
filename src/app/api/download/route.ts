@@ -5,19 +5,24 @@ export const runtime = "edge";
 
 /**
  * Cobalt v10 Download Bridge (Feb 2026 Production)
- * Strictly uses internal Service Bindings to bypass Cloudflare's public WAF.
+ * Strictly follows the Cobalt v10 standard JSON body.
  */
 export async function POST(request: NextRequest) {
-  const isDev = process.env.NODE_ENV === "development";
+  const isDev = process.env.NODE_ENV === "development" || request.headers.get("host")?.includes("localhost");
   
   try {
     const body = await request.json();
     const url = body.url;
 
     if (!url) {
-      return NextResponse.json({ status: "error", error: "URL is required" }, { status: 400 });
+      return NextResponse.json({ status: "error", text: "URL is required" }, { status: 400 });
     }
 
+    /**
+     * STATED COBALT V10 PAYLOAD:
+     * Only include officially supported fields. 
+     * Do NOT add 'externalProxy' or 'proxy' to the body, as it triggers 'error.api.invalid_body'.
+     */
     const cobaltPayload = JSON.stringify({
       url: url,
       videoQuality: "720",
@@ -28,30 +33,21 @@ export async function POST(request: NextRequest) {
     let fetchResponse: Response;
 
     if (isDev) {
-      // Local: Direct call to docker container
       fetchResponse = await fetch("http://127.0.0.1:9000/", {
         method: "POST",
         headers: { "Content-Type": "application/json", "Accept": "application/json" },
         body: cobaltPayload,
       });
     } else {
-      // Production: Strictly use the Service Binding (COBALT_WORKER)
-      const context = getRequestContext();
-      const env = context.env as any;
-      const worker = env.COBALT_WORKER;
+      const worker = (process.env as any).COBALT_WORKER || (getRequestContext()?.env as any)?.COBALT_WORKER;
 
       if (!worker) {
         return NextResponse.json({ 
           status: "error", 
-          error: "Infrastructure Error: COBALT_WORKER binding not found." 
+          text: "Infrastructure Error: COBALT_WORKER binding not found." 
         }, { status: 500 });
       }
 
-      /**
-       * TO BYPASS 1003:
-       * We hit the service binding using a generic internal URL.
-       * We do NOT pass the original request object to prevent header leakage.
-       */
       fetchResponse = await worker.fetch("http://cobalt.internal/api/json", {
         method: "POST",
         headers: { "Content-Type": "application/json", "Accept": "application/json" },
@@ -63,33 +59,23 @@ export async function POST(request: NextRequest) {
 
     try {
       const data = JSON.parse(responseText);
-      
-      // Handle "error" status from Cobalt v10 or our worker
       if (data.status === "error") {
-        return NextResponse.json(data, { status: 502 });
-      }
-
-      return NextResponse.json(data);
-    } catch (e) {
-      // If we see 1003 in the response text, it means the firewall blocked the bridge.
-      if (responseText.includes("1003")) {
+        // Normalize nested error objects to strings
+        const errorDetail = typeof data.error === 'object' ? (data.error.message || data.error.code) : data.error;
         return NextResponse.json({ 
-          status: "error", 
-          error: "Bridge Interception (1003). Please contact support." 
+            status: "error", 
+            text: errorDetail || data.text || "Backend Engine Error" 
         }, { status: 502 });
       }
-
-      return NextResponse.json({ 
-        status: "error", 
-        error: "Non-JSON response from backend engine." 
-      }, { status: 502 });
+      return NextResponse.json(data);
+    } catch (e) {
+      if (responseText.includes("1003")) {
+        return NextResponse.json({ status: "error", text: "Cloudflare Bridge Blocked (1003)." }, { status: 502 });
+      }
+      return NextResponse.json({ status: "error", text: "Invalid JSON from engine." }, { status: 502 });
     }
 
   } catch (err: any) {
-    // GRACEFUL ERROR HANDLING: Prevents frontend loops by returning a structured error.
-    return NextResponse.json({ 
-      status: "error", 
-      error: `Bridge Fatal: ${err.message}` 
-    }, { status: 500 });
+    return NextResponse.json({ status: "error", text: `Bridge Fatal: ${err.message}` }, { status: 500 });
   }
 }

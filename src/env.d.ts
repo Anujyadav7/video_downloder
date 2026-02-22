@@ -1,17 +1,21 @@
-
-// Cloudflare Environment Types for Next.js 15 Edge Runtime
-declare global {
-  namespace NodeJS {
-    interface ProcessEnv {
-      COBALT_WORKER: {
-        fetch: typeof fetch;
-      };
-      COBALT_SERVICE: {
-        idFromName(name: string): any;
-        get(id: any): any;
-      };
-    }
+declare namespace NodeJS {
+  interface ProcessEnv {
+    NODE_ENV: "development" | "production" | "test";
+    COBALT_WORKER: {
+      fetch: (request: Request | string, init?: RequestInit) => Promise<Response>;
+    };
+    GROQ_API_KEY: string;
   }
 }
 
-export {};
+declare module "@cloudflare/next-on-pages" {
+  export function getRequestContext(): {
+    env: {
+      COBALT_WORKER: {
+        fetch: (request: Request | string, init?: RequestInit) => Promise<Response>;
+      };
+      COBALT_SERVICE: any;
+      GROQ_API_KEY: string;
+    };
+  };
+}

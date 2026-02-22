@@ -192,16 +192,28 @@ export default function InputBox({ onDownload, type = "video" }: InputBoxProps) 
       
       if (response.ok && data.status !== "error") {
            await processData(data);
-           return; // Success!
+           return; 
       }
       
-      // Explicitly catch bridge or container errors
-      const errorMsg = data.text || data.error || "Server bridge currently unavailable.";
+      // Extract a human-readable string from the error response
+      let errorMsg = "Server bridge currently unavailable.";
+      if (typeof data.text === 'string') {
+        errorMsg = data.text;
+      } else if (data.error) {
+        if (typeof data.error === 'string') {
+          errorMsg = data.error;
+        } else if (typeof (data.error as any).message === 'string') {
+          errorMsg = (data.error as any).message;
+        } else if (typeof (data.error as any).code === 'string') {
+          errorMsg = (data.error as any).code;
+        }
+      }
+      
       throw new Error(errorMsg);
 
     } catch (serverErr: any) {
-      console.error("[InputBox] Download Failed:", serverErr.message);
-      setError(serverErr.message);
+      console.error("[InputBox] Download Failed:", serverErr);
+      setError(serverErr.message || "An unexpected error occurred.");
     } finally {
       setLoading(false);
       setLoadingProgress(0);
